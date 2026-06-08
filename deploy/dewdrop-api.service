@@ -1,0 +1,42 @@
+[Unit]
+Description=DEWDROP read-only weather API + local-network web UI
+After=network.target
+
+[Service]
+User=dewdrop
+WorkingDirectory=/opt/dewdrop
+# Bind on the LAN so the §7 web UI is reachable from the local network
+# (no auth in v1, per the design doc). Berries also queries this over HTTP.
+ExecStart=/opt/dewdrop/venv/bin/uvicorn dewdrop.api.main:app --host 0.0.0.0 --port 8003
+EnvironmentFile=/opt/dewdrop/.env
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dewdrop-api
+
+# ── Sandboxing / hardening ────────────────────────────────────────────────
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/dewdrop/data /opt/dewdrop/logs
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

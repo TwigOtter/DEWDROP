@@ -1,0 +1,10 @@
+[Unit]
+Description=Run DEWDROP forecast scoring nightly
+
+[Timer]
+# Nightly at 03:15 local time; catch up if the machine was off.
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target

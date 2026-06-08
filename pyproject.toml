@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dewdrop"
+version = "0.2.0"
+description = "Demonic Environmental Weather Detection, Reporting, and Observation Project"
+requires-python = ">=3.11"
+dependencies = [
+    "httpx>=0.27",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.setuptools.packages.find]
+include = ["dewdrop*"]
+
+[tool.setuptools.package-data]
+# Ship the web UI assets in non-editable installs too.
+"dewdrop.web" = ["static/*"]

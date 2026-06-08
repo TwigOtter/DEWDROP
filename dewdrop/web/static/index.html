@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DEWDROP — KC Weather Accuracy Tracker</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+  <header>
+    <h1>💧 DEWDROP</h1>
+    <span class="subtitle">KC Weather Accuracy Tracker</span>
+    <span id="status" class="status"></span>
+  </header>
+
+  <nav id="tabs">
+    <button data-view="dashboard" class="active">Dashboard</button>
+    <button data-view="services">Service Comparison</button>
+    <button data-view="bias">Bias Curves</button>
+    <button data-view="daily">Daily Drill-down</button>
+    <button data-view="raw">Raw Log</button>
+  </nav>
+
+  <main>
+    <!-- Dashboard -->
+    <section id="dashboard" class="view active">
+      <h2>Bias-corrected ensemble forecast</h2>
+      <p class="hint">Weighted by each service's inverse error variance per horizon. Bands are ±1σ across services.</p>
+      <div id="ensemble-cards" class="cards"></div>
+    </section>
+
+    <!-- Service comparison -->
+    <section id="services" class="view">
+      <h2>Service comparison</h2>
+      <div class="controls">
+        <label>Horizon <input id="svc-hmin" type="number" value="0" min="0" max="10" style="width:3.5em"> –
+          <input id="svc-hmax" type="number" value="10" min="0" max="10" style="width:3.5em"></label>
+        <button id="svc-apply">Apply</button>
+      </div>
+      <table id="svc-table"><thead><tr>
+        <th>Service</th><th>MAE high (°F)</th><th>MAE low (°F)</th>
+        <th>MAE precip (mm)</th><th>Condition %</th><th>Data points</th>
+      </tr></thead><tbody></tbody></table>
+    </section>
+
+    <!-- Bias curves -->
+    <section id="bias" class="view">
+      <h2>Bias curves</h2>
+      <div class="controls">
+        <label>Metric
+          <select id="bias-metric">
+            <option value="temp_high_err">High temp</option>
+            <option value="temp_low_err">Low temp</option>
+            <option value="precip_err">Precip</option>
+          </select>
+        </label>
+      </div>
+      <p class="hint">Mean signed error (forecast − actual) vs. horizon. Above 0 = runs hot / over-forecasts.</p>
+      <canvas id="bias-chart" height="120"></canvas>
+    </section>
+
+    <!-- Daily drill-down -->
+    <section id="daily" class="view">
+      <h2>Daily drill-down</h2>
+      <div class="controls">
+        <label>Date <input id="daily-date" type="date"></label>
+        <button id="daily-load">Load</button>
+      </div>
+      <div id="daily-actuals"></div>
+      <table id="daily-table"><thead><tr>
+        <th>Service</th><th>Horizon</th><th>High</th><th>Low</th><th>Precip</th><th>Condition</th>
+      </tr></thead><tbody></tbody></table>
+    </section>
+
+    <!-- Raw log -->
+    <section id="raw" class="view">
+      <h2>Raw error log</h2>
+      <table id="raw-table"><thead><tr>
+        <th>#</th><th>Service</th><th>Target</th><th>Horizon</th><th>Actuals</th>
+        <th>High err</th><th>Low err</th><th>Precip err</th><th>Cond?</th>
+      </tr></thead><tbody></tbody></table>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
