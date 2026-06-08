@@ -1,16 +1,18 @@
 """Read-only HTTP API + local-network web UI.
 
-Serves JSON for the five design-doc §7 views and the single-page Chart.js front
-end from ``dewdrop/web/static``. The same JSON endpoints are what Berries can
-query later over HTTP — no direct SQLite access needed.
+Serves JSON for the five design-doc §7 views, station live/history endpoints,
+and the single-page Chart.js front end from ``dewdrop/web/static``. The same
+JSON endpoints are what Berries can query later over HTTP.
 
 Run:  uvicorn dewdrop.api.main:app --host 0.0.0.0 --port 8003
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
+import httpx
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,10 +20,15 @@ from fastapi.staticfiles import StaticFiles
 from .. import config
 from ..blend import ensemble_forecast, service_bias_curves
 from ..db import connect
+from ..station.reader import parse as parse_station
 
-app = FastAPI(title="DEWDROP", version="0.2.0")
+app = FastAPI(title="DEWDROP", version="0.3.0")
 
 _STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
+
+
+def _local_today() -> str:
+    return datetime.now(ZoneInfo(config.TIMEZONE)).date().isoformat()
 
 
 @app.get("/health")
@@ -30,7 +37,77 @@ def health() -> dict:
             "actuals": config.ENABLED_ACTUALS, "sources": config.ENABLED_SOURCES}
 
 
-# ── Dashboard: bias-corrected ensemble for the next N days ───────────────
+# ── Station: live proxy + history ────────────────────────────────────────────
+@app.get("/api/station/live")
+def api_station_live() -> dict:
+    """Fetch current conditions directly from the GW2000X (real-time proxy)."""
+    if not config.GW2000_HOST:
+        return {"error": "DEWDROP_GW2000_HOST not configured"}
+    try:
+        resp = httpx.get(f"http://{config.GW2000_HOST}/get_livedata_info", timeout=5)
+        resp.raise_for_status()
+    except Exception as exc:
+        return {"error": str(exc)}
+    r = parse_station(resp.json())
+    return {
+        "ts": r.ts.isoformat(),
+        "temp_out_f": r.temp_out_f,
+        "humidity_out": r.humidity_out,
+        "temp_in_f": r.temp_in_f,
+        "humidity_in": r.humidity_in,
+        "pressure_inhg": r.pressure_inhg,
+        "wind_speed_mph": r.wind_speed_mph,
+        "wind_gust_mph": r.wind_gust_mph,
+        "wind_dir_deg": r.wind_dir_deg,
+        "precip_hourly_mm": r.precip_hourly_mm,
+        "precip_daily_mm": r.precip_daily_mm,
+        "uv_index": r.uv_index,
+        "solar_rad_wm2": r.solar_rad_wm2,
+    }
+
+
+@app.get("/api/station/today")
+def api_station_today() -> dict:
+    """All stored readings for today (used for intraday charts)."""
+    today = _local_today()
+    tz = ZoneInfo(config.TIMEZONE)
+    local_midnight = datetime.fromisoformat(today).replace(tzinfo=tz)
+    utc_lo = local_midnight.astimezone(timezone.utc).isoformat()
+    utc_hi = (local_midnight + timedelta(days=1)).astimezone(timezone.utc).isoformat()
+    with connect() as conn:
+        rows = conn.execute(
+            """SELECT ts, temp_out_f, humidity_out, wind_speed_mph, wind_gust_mph,
+                      wind_dir_deg, precip_daily_mm, uv_index, solar_rad_wm2
+               FROM station_readings
+               WHERE ts >= ? AND ts < ?
+               ORDER BY ts""",
+            (utc_lo, utc_hi),
+        ).fetchall()
+    return {"date": today, "readings": [dict(r) for r in rows]}
+
+
+@app.get("/api/station/daily")
+def api_station_daily_list(days: int = Query(default=30)) -> dict:
+    """Most-recent N days of daily summaries."""
+    with connect() as conn:
+        rows = conn.execute(
+            "SELECT * FROM station_daily ORDER BY date DESC LIMIT ?",
+            (min(days, 365),),
+        ).fetchall()
+    return {"days": [dict(r) for r in rows]}
+
+
+@app.get("/api/station/daily/{target_date}")
+def api_station_daily(target_date: str) -> dict:
+    """Daily summary for one specific date."""
+    with connect() as conn:
+        row = conn.execute(
+            "SELECT * FROM station_daily WHERE date = ?", (target_date,)
+        ).fetchone()
+    return dict(row) if row else {}
+
+
+# ── Dashboard: bias-corrected ensemble for the next N days ───────────────────
 @app.get("/api/ensemble")
 def api_ensemble(source: str | None = None) -> dict:
     with connect() as conn:
@@ -47,7 +124,7 @@ def forecast(source: str | None = None) -> dict:
     return api_ensemble(source)
 
 
-# ── Service comparison table ─────────────────────────────────────────────
+# ── Service comparison table ──────────────────────────────────────────────────
 @app.get("/api/services")
 def api_services(
     source: str | None = None,
@@ -94,7 +171,7 @@ def api_services(
             ]}
 
 
-# ── Bias curves (per service, mean signed error by horizon) ──────────────
+# ── Bias curves (per service, mean signed error by horizon) ──────────────────
 @app.get("/api/bias-curves")
 def api_bias_curves(metric: str = "temp_high_err", source: str | None = None) -> dict:
     allowed = {"temp_high_err", "temp_low_err", "precip_err"}
@@ -105,7 +182,7 @@ def api_bias_curves(metric: str = "temp_high_err", source: str | None = None) ->
     return {"metric": metric, "curves": curves}
 
 
-# ── Daily drill-down: every service at every horizon vs. actual ──────────
+# ── Daily drill-down: every service at every horizon vs. actual ───────────────
 @app.get("/api/daily/{target_date}")
 def api_daily(target_date: str) -> dict:
     with connect() as conn:
@@ -130,7 +207,7 @@ def api_daily(target_date: str) -> dict:
             "actuals": [dict(r) for r in actuals]}
 
 
-# ── Raw log (debug view) ─────────────────────────────────────────────────
+# ── Raw log (debug view) ──────────────────────────────────────────────────────
 @app.get("/api/errors")
 def api_errors(limit: int = 200) -> dict:
     with connect() as conn:
@@ -146,7 +223,7 @@ def api_errors(limit: int = 200) -> dict:
     return {"count": len(rows), "errors": [dict(r) for r in rows]}
 
 
-# ── Frontend ─────────────────────────────────────────────────────────────
+# ── Frontend ──────────────────────────────────────────────────────────────────
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(_STATIC / "index.html")

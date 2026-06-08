@@ -1,0 +1,36 @@
+[Unit]
+Description=DEWDROP station aggregator — roll up yesterday's readings to daily summary
+After=network.target
+
+[Service]
+Type=oneshot
+User=dewdrop
+WorkingDirectory=/opt/dewdrop
+ExecStart=/opt/dewdrop/venv/bin/python scripts/aggregate_station.py
+EnvironmentFile=/opt/dewdrop/.env
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=dewdrop-aggregate
+
+# ── Sandboxing / hardening ────────────────────────────────────────────────
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/opt/dewdrop/data /opt/dewdrop/logs
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+UMask=0077

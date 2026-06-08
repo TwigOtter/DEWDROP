@@ -1,0 +1,11 @@
+[Unit]
+Description=Roll up yesterday's station readings nightly
+
+[Timer]
+# 00:05 local time — after midnight, before the forecast poll at 00:10.
+OnCalendar=*-*-* 00:05:00
+RandomizedDelaySec=60
+Persistent=true
+
+[Install]
+WantedBy=timers.target

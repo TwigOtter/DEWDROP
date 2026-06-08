@@ -1,6 +1,6 @@
 # DEWDROP
 
-**Demonic Environmental Weather Detection, Reporting, and Observation Project**
+**Demonic Environmental Weather Detection, Reporting, Observation, and Prediction**
 — the KC Weather Accuracy Tracker.
 
 Each night DEWDROP snapshots forecasts from several free weather services for

@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Iterable, Iterator
 
 from . import config
-from .models import ActualDay, ForecastDay
+from .models import ActualDay, ForecastDay, StationReading
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS forecasts (
@@ -67,6 +67,42 @@ CREATE TABLE IF NOT EXISTS forecast_errors (
 );
 CREATE INDEX IF NOT EXISTS idx_errors_service_horizon
     ON forecast_errors(service, horizon_days);
+
+CREATE TABLE IF NOT EXISTS station_readings (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts               DATETIME NOT NULL UNIQUE,   -- ISO-8601 UTC
+    temp_out_f       REAL,
+    humidity_out     INTEGER,
+    temp_in_f        REAL,
+    humidity_in      INTEGER,
+    pressure_inhg    REAL,
+    wind_speed_mph   REAL,
+    wind_gust_mph    REAL,
+    wind_dir_deg     INTEGER,
+    precip_hourly_mm REAL,
+    precip_daily_mm  REAL,
+    uv_index         REAL,
+    solar_rad_wm2    REAL,
+    raw_json         TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_station_ts ON station_readings(ts);
+
+CREATE TABLE IF NOT EXISTS station_daily (
+    date            TEXT PRIMARY KEY,            -- YYYY-MM-DD local
+    temp_high_f     REAL,
+    temp_low_f      REAL,
+    temp_avg_f      REAL,
+    humidity_high   INTEGER,
+    humidity_low    INTEGER,
+    humidity_avg    REAL,
+    wind_max_mph    REAL,
+    wind_avg_mph    REAL,
+    precip_total_mm REAL,
+    uv_max          REAL,
+    solar_max_wm2   REAL,
+    n_readings      INTEGER,
+    aggregated_at   DATETIME
+);
 """
 
 
@@ -129,3 +165,18 @@ def insert_actuals(conn: sqlite3.Connection, actuals: Iterable[ActualDay]) -> in
         rows,
     )
     return cur.rowcount
+
+
+def insert_station_reading(conn: sqlite3.Connection, r: StationReading) -> bool:
+    """INSERT OR IGNORE one station snapshot. Returns True if it was new."""
+    cur = conn.execute(
+        """INSERT OR IGNORE INTO station_readings
+           (ts, temp_out_f, humidity_out, temp_in_f, humidity_in,
+            pressure_inhg, wind_speed_mph, wind_gust_mph, wind_dir_deg,
+            precip_hourly_mm, precip_daily_mm, uv_index, solar_rad_wm2, raw_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (r.ts.isoformat(), r.temp_out_f, r.humidity_out, r.temp_in_f, r.humidity_in,
+         r.pressure_inhg, r.wind_speed_mph, r.wind_gust_mph, r.wind_dir_deg,
+         r.precip_hourly_mm, r.precip_daily_mm, r.uv_index, r.solar_rad_wm2, r.raw_json),
+    )
+    return cur.rowcount == 1

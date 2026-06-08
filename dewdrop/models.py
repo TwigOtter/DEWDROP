@@ -66,3 +66,22 @@ class ActualDay:
     condition: str | None = None
     fetched_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc))
+
+
+@dataclass
+class StationReading:
+    """One point-in-time snapshot from the local GW2000X weather station."""
+    ts: datetime
+    temp_out_f: float | None = None
+    humidity_out: int | None = None
+    temp_in_f: float | None = None
+    humidity_in: int | None = None
+    pressure_inhg: float | None = None
+    wind_speed_mph: float | None = None
+    wind_gust_mph: float | None = None
+    wind_dir_deg: int | None = None
+    precip_hourly_mm: float | None = None
+    precip_daily_mm: float | None = None
+    uv_index: float | None = None
+    solar_rad_wm2: float | None = None
+    raw_json: str | None = None

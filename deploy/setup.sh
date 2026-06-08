@@ -51,7 +51,17 @@ sudo -u "$SVC_USER" "$TARGET/venv/bin/python" "$TARGET/scripts/init_db.py"
 cp "$TARGET"/deploy/dewdrop-*.service "$TARGET"/deploy/dewdrop-*.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now dewdrop-poll.timer dewdrop-actuals.timer dewdrop-score.timer
+systemctl enable --now dewdrop-aggregate.timer
 systemctl enable --now dewdrop-api.service
+
+# Station poller only makes sense if GW2000_HOST is set.
+if grep -q "^DEWDROP_GW2000_HOST=.\+" "$TARGET/.env" 2>/dev/null; then
+  systemctl enable --now dewdrop-station.timer
+  echo "Station poller enabled (dewdrop-station.timer)."
+else
+  echo "Note: dewdrop-station.timer NOT enabled — set DEWDROP_GW2000_HOST in .env, then:"
+  echo "  sudo systemctl enable --now dewdrop-station.timer"
+fi
 
 echo
 echo "DEWDROP installed at $TARGET."

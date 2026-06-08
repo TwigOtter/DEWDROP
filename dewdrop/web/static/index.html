@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DEWDROP — KC Weather Accuracy Tracker</title>
+  <title>DEWDROP — KC Weather</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
@@ -15,7 +15,8 @@
   </header>
 
   <nav id="tabs">
-    <button data-view="dashboard" class="active">Dashboard</button>
+    <button data-view="station" class="active">Current Conditions</button>
+    <button data-view="dashboard">Forecast</button>
     <button data-view="services">Service Comparison</button>
     <button data-view="bias">Bias Curves</button>
     <button data-view="daily">Daily Drill-down</button>
@@ -23,8 +24,38 @@
   </nav>
 
   <main>
-    <!-- Dashboard -->
-    <section id="dashboard" class="view active">
+
+    <!-- Current Conditions -->
+    <section id="station" class="view active">
+      <div class="station-toolbar">
+        <span id="station-updated" class="hint"></span>
+        <button id="station-refresh-btn" class="btn-small">Refresh</button>
+      </div>
+      <div id="station-cards" class="station-live-grid"></div>
+
+      <h3 class="chart-heading">Today's Charts</h3>
+      <div class="chart-grid">
+        <div class="chart-box">
+          <div class="chart-title">Temperature (°F)</div>
+          <canvas id="chart-temp"></canvas>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">Humidity (%)</div>
+          <canvas id="chart-humidity"></canvas>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">Wind Speed (mph)</div>
+          <canvas id="chart-wind"></canvas>
+        </div>
+        <div class="chart-box">
+          <div class="chart-title">Accumulated Precip (mm)</div>
+          <canvas id="chart-precip"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Forecast Dashboard -->
+    <section id="dashboard" class="view">
       <h2>Bias-corrected ensemble forecast</h2>
       <p class="hint">Weighted by each service's inverse error variance per horizon. Bands are ±1σ across services.</p>
       <div id="ensemble-cards" class="cards"></div>
@@ -81,6 +112,7 @@
         <th>High err</th><th>Low err</th><th>Precip err</th><th>Cond?</th>
       </tr></thead><tbody></tbody></table>
     </section>
+
   </main>
 
   <script src="/static/app.js"></script>

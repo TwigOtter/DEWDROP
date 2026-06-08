@@ -1,6 +1,7 @@
 :root {
   --bg: #0f1620; --panel: #18222e; --ink: #e8eef4; --muted: #8aa0b4;
   --accent: #4fc3f7; --line: #27384a; --warm: #ff7043; --cool: #42a5f5;
+  --green: #66bb6a; --purple: #ab47bc; --yellow: #ffca28;
 }
 * { box-sizing: border-box; }
 body {
@@ -14,16 +15,17 @@ header {
 header h1 { margin: 0; font-size: 1.3rem; }
 .subtitle { color: var(--muted); }
 .status { margin-left: auto; color: var(--muted); font-size: .85rem; }
-nav#tabs { display: flex; gap: .25rem; padding: .5rem 1rem 0; background: var(--panel); }
+nav#tabs { display: flex; gap: .25rem; padding: .5rem 1rem 0; background: var(--panel); overflow-x: auto; }
 nav#tabs button {
   background: transparent; color: var(--muted); border: none; border-bottom: 2px solid transparent;
-  padding: .55rem .9rem; cursor: pointer; font-size: .95rem;
+  padding: .55rem .9rem; cursor: pointer; font-size: .95rem; white-space: nowrap;
 }
 nav#tabs button.active { color: var(--ink); border-bottom-color: var(--accent); }
 main { padding: 1.25rem; max-width: 1100px; margin: 0 auto; }
 .view { display: none; }
 .view.active { display: block; }
 h2 { margin-top: 0; font-weight: 600; }
+h3.chart-heading { margin: 1.5rem 0 .75rem; font-size: 1rem; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 .hint { color: var(--muted); font-size: .85rem; margin-top: -.4rem; }
 .controls { margin: .75rem 0; display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
 .controls input, .controls select {
@@ -34,6 +36,8 @@ button#svc-apply, button#daily-load {
   background: var(--accent); color: #04121d; border: none; border-radius: 6px;
   padding: .35rem .8rem; cursor: pointer; font-weight: 600;
 }
+
+/* ── Forecast cards ── */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .7rem; }
 .card {
   background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: .8rem;
@@ -43,6 +47,8 @@ button#svc-apply, button#daily-load {
 .card .lo { font-size: 1.1rem; color: var(--cool); }
 .card .band { color: var(--muted); font-size: .8rem; }
 .card .cond { margin-top: .3rem; font-size: .85rem; }
+
+/* ── Tables ── */
 table { width: 100%; border-collapse: collapse; margin-top: .5rem; }
 th, td { text-align: right; padding: .45rem .6rem; border-bottom: 1px solid var(--line); }
 th:first-child, td:first-child { text-align: left; }
@@ -51,3 +57,42 @@ tbody tr:hover { background: #1d2a38; }
 #daily-actuals { margin: .6rem 0; padding: .6rem .8rem; background: var(--panel);
   border: 1px solid var(--line); border-radius: 8px; }
 .empty { color: var(--muted); padding: 1rem 0; }
+
+/* ── Current Conditions ── */
+.station-toolbar {
+  display: flex; align-items: center; gap: .75rem; margin-bottom: .75rem;
+}
+.btn-small {
+  background: var(--panel); color: var(--accent); border: 1px solid var(--line);
+  border-radius: 6px; padding: .25rem .65rem; cursor: pointer; font-size: .85rem;
+}
+.btn-small:hover { background: var(--line); }
+
+.station-live-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: .65rem;
+  margin-bottom: .5rem;
+}
+.sc {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: .75rem .85rem;
+}
+.sc.primary { border-color: var(--warm); }
+.sc-label { color: var(--muted); font-size: .75rem; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .2rem; }
+.sc-val { font-size: 1.5rem; font-weight: 700; line-height: 1.15; }
+.sc-val.warm { color: var(--warm); }
+.sc-val.cool { color: var(--cool); }
+.sc-val.green { color: var(--green); }
+.sc-sub { color: var(--muted); font-size: .8rem; margin-top: .1rem; }
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+  gap: 1rem;
+}
+.chart-box {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+  padding: .85rem 1rem 1rem;
+}
+.chart-title { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .04em; margin-bottom: .5rem; }
