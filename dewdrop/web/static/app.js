@@ -97,13 +97,12 @@ function renderStationCards(live) {
   box.innerHTML = cards.join("");
 }
 
-function _makeChart(id, datasets, yLabel) {
+function _makeChart(id, labels, datasets, yLabel) {
   if (_stationCharts[id]) _stationCharts[id].destroy();
   _stationCharts[id] = new Chart(document.getElementById(id), {
     type: "line",
-    data: { datasets },
+    data: { labels, datasets },
     options: {
-      parsing: false,
       animation: false,
       scales: {
         x: {
@@ -133,7 +132,6 @@ function renderStationCharts(readings) {
   const line = (data, color, label, dash) => ({
     label,
     data,
-    labels,
     borderColor: color,
     backgroundColor: color + "22",
     fill: !dash,
@@ -143,18 +141,18 @@ function renderStationCharts(readings) {
     borderDash: dash || [],
   });
 
-  _makeChart("chart-temp",
+  _makeChart("chart-temp", labels,
     [line(readings.map((r) => r.temp_out_f), "#ff7043", "Temp (°F)")]);
 
-  _makeChart("chart-humidity",
+  _makeChart("chart-humidity", labels,
     [line(readings.map((r) => r.humidity_out), "#4fc3f7", "Humidity (%)")]);
 
-  _makeChart("chart-wind", [
+  _makeChart("chart-wind", labels, [
     line(readings.map((r) => r.wind_speed_mph), "#66bb6a", "Speed"),
     line(readings.map((r) => r.wind_gust_mph), "#ffca28", "Gust", [5, 3]),
   ]);
 
-  _makeChart("chart-precip",
+  _makeChart("chart-precip", labels,
     [line(readings.map((r) => r.precip_daily_mm), "#ab47bc", "Precip (mm)")]);
 }
 
@@ -185,12 +183,30 @@ $("#station-refresh-btn").addEventListener("click", refreshStation);
 // FORECAST DASHBOARD
 // ════════════════════════════════════════════════════════════════════════════
 loaders.dashboard = async () => {
-  const data = await api("/api/ensemble");
+  const [data, mc] = await Promise.all([
+    api("/api/ensemble"),
+    api("/api/microclimate"),
+  ]);
+
+  const banner = $("#ensemble-microclimate");
+  const hOff = mc.temp_high_offset_f, lOff = mc.temp_low_offset_f;
+  if (mc.n_days === 0 || (hOff === null && lOff === null)) {
+    banner.innerHTML = `🏠 Backyard offset vs ${mc.regional} (${mc.window_days}d window): calibrating — ${mc.n_days} paired day(s) so far`;
+  } else {
+    const word = (v) => v == null ? "?" : v > 0 ? `${v.toFixed(1)}° warmer` : v < 0 ? `${(-v).toFixed(1)}° cooler` : "matches";
+    banner.innerHTML = `🏠 Backyard offset vs ${mc.regional} (${mc.window_days}d · ${mc.n_days} pts): highs run ${word(hOff)}, lows ${word(lOff)}`;
+  }
+
   const box = $("#ensemble-cards");
   if (!data.days.length) {
     box.innerHTML = '<p class="empty">No forecasts collected yet.</p>';
     return;
   }
+  const home = (d) => {
+    if (hOff == null || lOff == null) return "";
+    if (d.temp_high_f == null || d.temp_low_f == null) return "";
+    return `<div class="band">home: ${(d.temp_high_f + hOff).toFixed(1)}° / ${(d.temp_low_f + lOff).toFixed(1)}°</div>`;
+  };
   box.innerHTML = data.days.map((d) => `
     <div class="card">
       <div class="date">+${d.horizon_days}d · ${d.target_date}</div>
@@ -198,6 +214,7 @@ loaders.dashboard = async () => {
       <div class="lo">${fmt(d.temp_low_f, "°")}${d.temp_low_f_sd != null ? `<span class="band"> ±${d.temp_low_f_sd}</span>` : ""}</div>
       <div class="band">precip ${fmt(d.precip_mm, " mm")}</div>
       <div class="cond">${d.condition || "—"}</div>
+      ${home(d)}
       <div class="band">${d.n_services} services</div>
     </div>`).join("");
 };

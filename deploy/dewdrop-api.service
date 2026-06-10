@@ -7,7 +7,7 @@ User=dewdrop
 WorkingDirectory=/opt/dewdrop
 # Bind on the LAN so the §7 web UI is reachable from the local network
 # (no auth in v1, per the design doc). Berries also queries this over HTTP.
-ExecStart=/opt/dewdrop/venv/bin/uvicorn dewdrop.api.main:app --host 0.0.0.0 --port 8003
+ExecStart=/opt/dewdrop/venv/bin/uvicorn dewdrop.api.main:app --host 0.0.0.0 --port 8004
 EnvironmentFile=/opt/dewdrop/.env
 Restart=on-failure
 RestartSec=5

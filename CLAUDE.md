@@ -58,7 +58,7 @@ python scripts/init_db.py
 python scripts/poll_forecasts.py          # snapshot forecasts (today..+10)
 python scripts/ingest_actuals.py [DATE]   # fetch actuals (default: yesterday)
 python scripts/run_scoring.py             # score forecasts that now have actuals
-uvicorn dewdrop.api.main:app --port 8003  # API + web UI at /
+uvicorn dewdrop.api.main:app --port 8004  # API + web UI at /
 ```
 
 Production: `deploy/setup.sh` installs to `/opt/dewdrop` and enables the timers

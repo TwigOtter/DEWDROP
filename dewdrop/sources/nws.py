@@ -31,13 +31,18 @@ class NWSSource(ForecastSource):
         self, client: httpx.AsyncClient, lat: float, lon: float, horizon_days: int
     ) -> list[ForecastDay]:
         headers = {"User-Agent": USER_AGENT, "Accept": "application/geo+json"}
+        # NWS truncates coordinates to 4 decimal places and redirects to the
+        # canonical URL; httpx doesn't follow redirects by default.
         meta = await client.get(
-            self.POINTS_URL.format(lat=lat, lon=lon), headers=headers, timeout=30
+            self.POINTS_URL.format(lat=lat, lon=lon),
+            headers=headers, timeout=30, follow_redirects=True,
         )
         meta.raise_for_status()
         forecast_url = meta.json()["properties"]["forecast"]
 
-        resp = await client.get(forecast_url, headers=headers, timeout=30)
+        resp = await client.get(
+            forecast_url, headers=headers, timeout=30, follow_redirects=True,
+        )
         resp.raise_for_status()
         periods = resp.json()["properties"]["periods"]
 

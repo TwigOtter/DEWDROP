@@ -4,7 +4,7 @@ Serves JSON for the five design-doc §7 views, station live/history endpoints,
 and the single-page Chart.js front end from ``dewdrop/web/static``. The same
 JSON endpoints are what Berries can query later over HTTP.
 
-Run:  uvicorn dewdrop.api.main:app --host 0.0.0.0 --port 8003
+Run:  uvicorn dewdrop.api.main:app --host 0.0.0.0 --port 8004
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import config
-from ..blend import ensemble_forecast, service_bias_curves
+from ..blend import compute_offset, ensemble_forecast, service_bias_curves
 from ..db import connect
 from ..station.reader import parse as parse_station
 
@@ -122,6 +122,13 @@ def api_ensemble(source: str | None = None) -> dict:
 @app.get("/forecast")
 def forecast(source: str | None = None) -> dict:
     return api_ensemble(source)
+
+
+# ── Microclimate offset: backyard (GW2000) vs regional canonical (MCI) ───────
+@app.get("/api/microclimate")
+def api_microclimate(days: int = 30) -> dict:
+    with connect() as conn:
+        return compute_offset(conn, window_days=days)
 
 
 # ── Service comparison table ──────────────────────────────────────────────────

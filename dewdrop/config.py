@@ -63,4 +63,4 @@ ENABLED_SOURCES = [
 
 # ── Read-only HTTP API (web UI + Berries) ────────────────────────────────
 API_HOST = _get("DEWDROP_API_HOST", "127.0.0.1")
-API_PORT = int(_get("DEWDROP_API_PORT", "8003"))
+API_PORT = int(_get("DEWDROP_API_PORT", "8004"))
