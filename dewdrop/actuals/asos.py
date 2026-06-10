@@ -41,8 +41,7 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
     params = {
         "network": config.ASOS_NETWORK,
         "station": config.ASOS_STATION,
-        "sdate": target_date.isoformat(),
-        "edate": target_date.isoformat(),
+        "date": target_date.isoformat(),
     }
     resp = await client.get(BASE_URL, params=params, timeout=30)
     resp.raise_for_status()
@@ -51,7 +50,12 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
     if not rows:
         return []
 
-    rec = rows[0]
+    # IEM silently ignores unknown date params and dumps the station's full
+    # history (oldest first), so never trust rows[0] blindly — match the date.
+    iso = target_date.isoformat()
+    rec = next((r for r in rows if r.get("date") == iso), None)
+    if rec is None:
+        return []
     high = _first(rec, "max_tmpf", "high", "max_temp_f")
     low = _first(rec, "min_tmpf", "low", "min_temp_f")
     precip_in = _first(rec, "precip", "pday", "precip_in")
