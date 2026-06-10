@@ -46,7 +46,7 @@ class NWSSource(ForecastSource):
         resp.raise_for_status()
         periods = resp.json()["properties"]["periods"]
 
-        fetched_on = self._today_utc()
+        fetched_on = self._today_local()
         # date -> partial ForecastDay fields
         days: dict[date, dict] = defaultdict(dict)
         raws: dict[date, list] = defaultdict(list)

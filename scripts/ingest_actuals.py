@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """Fetch actuals (ground truth) for a past day (design doc §4, Phase 2 step 1).
 
-Defaults to *yesterday* (UTC) — by then the day is complete at all sources.
+Defaults to *yesterday* (local time) — by then the day is complete at all sources.
 Pulls from every source in DEWDROP_ENABLED_ACTUALS (ASOS/MCI primary, EcoWitt
 secondary) and writes one `actuals` row per source. Idempotent.
 
@@ -10,7 +10,7 @@ Usage: python scripts/ingest_actuals.py [YYYY-MM-DD]
 import asyncio
 import logging
 import sys
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, timedelta
 
 import httpx
 
@@ -26,7 +26,7 @@ async def main() -> None:
     if len(sys.argv) > 1:
         target = date.fromisoformat(sys.argv[1])
     else:
-        target = datetime.now(timezone.utc).date() - timedelta(days=1)
+        target = config.local_today() - timedelta(days=1)
 
     fetchers = get_enabled(config.ENABLED_ACTUALS)
     log.info("Fetching actuals for %s from: %s", target, config.ENABLED_ACTUALS)

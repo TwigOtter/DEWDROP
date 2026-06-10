@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -64,3 +66,23 @@ ENABLED_SOURCES = [
 # ── Read-only HTTP API (web UI + Berries) ────────────────────────────────
 API_HOST = _get("DEWDROP_API_HOST", "127.0.0.1")
 API_PORT = int(_get("DEWDROP_API_PORT", "8004"))
+
+
+# ── Local time ───────────────────────────────────────────────────────────
+# The server runs in UTC, but all weather is reasoned about in the location's
+# local calendar day (TIMEZONE). Anything that asks "what day is it" — forecast
+# snapshot dates, horizons, "yesterday" for actuals, day-window cutoffs — MUST
+# go through these so it doesn't roll over at 00:00 UTC (e.g. 7pm CDT). Pure
+# *timestamps* (an instant in time) should stay UTC; these are for calendar days.
+def tz() -> ZoneInfo:
+    return ZoneInfo(TIMEZONE)
+
+
+def local_now() -> datetime:
+    """Timezone-aware 'now' in the configured local timezone."""
+    return datetime.now(ZoneInfo(TIMEZONE))
+
+
+def local_today() -> date:
+    """Today's date on the local calendar (not the server's UTC date)."""
+    return local_now().date()

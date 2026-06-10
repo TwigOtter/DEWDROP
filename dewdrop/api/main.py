@@ -10,7 +10,6 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import FastAPI, Query
@@ -28,7 +27,7 @@ _STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 
 
 def _local_today() -> str:
-    return datetime.now(ZoneInfo(config.TIMEZONE)).date().isoformat()
+    return config.local_today().isoformat()
 
 
 @app.get("/health")
@@ -70,7 +69,7 @@ def api_station_live() -> dict:
 def api_station_today() -> dict:
     """All stored readings for today (used for intraday charts)."""
     today = _local_today()
-    tz = ZoneInfo(config.TIMEZONE)
+    tz = config.tz()
     local_midnight = datetime.fromisoformat(today).replace(tzinfo=tz)
     utc_lo = local_midnight.astimezone(timezone.utc).isoformat()
     utc_hi = (local_midnight + timedelta(days=1)).astimezone(timezone.utc).isoformat()

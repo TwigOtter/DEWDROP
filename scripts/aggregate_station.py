@@ -6,7 +6,6 @@ Also accepts an explicit date argument for backfilling: python aggregate_station
 """
 import sys
 from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from dewdrop import config
 from dewdrop.db import connect, insert_actuals
@@ -14,7 +13,7 @@ from dewdrop.models import ActualDay
 
 
 def aggregate(target_date: date) -> None:
-    tz = ZoneInfo(config.TIMEZONE)
+    tz = config.tz()
     # Convert local-date boundaries to UTC for the station_readings ts column.
     local_midnight = datetime(target_date.year, target_date.month, target_date.day,
                               tzinfo=tz)
@@ -88,6 +87,5 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         target = date.fromisoformat(sys.argv[1])
     else:
-        tz = ZoneInfo(config.TIMEZONE)
-        target = (datetime.now(tz) - timedelta(days=1)).date()
+        target = config.local_today() - timedelta(days=1)
     aggregate(target)

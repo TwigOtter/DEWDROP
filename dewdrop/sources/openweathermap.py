@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import date, datetime
-from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -65,9 +64,8 @@ class OpenWeatherMapSource(ForecastSource):
         resp.raise_for_status()
         data = resp.json()
 
-        tz = ZoneInfo(config.TIMEZONE)
-        fetched_on = self._today_utc()
-        today_local = datetime.now(tz).date()
+        tz = config.tz()
+        fetched_on = self._today_local()
 
         by_day: dict[date, list[dict]] = defaultdict(list)
         for slice_ in data.get("list", []) or []:
@@ -76,7 +74,7 @@ class OpenWeatherMapSource(ForecastSource):
 
         out: list[ForecastDay] = []
         for d in sorted(by_day):
-            if (d - today_local).days > horizon_days:
+            if (d - fetched_on).days > horizon_days:
                 continue
             slices = by_day[d]
             highs = [s["main"]["temp_max"] for s in slices if "main" in s]

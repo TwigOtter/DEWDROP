@@ -10,7 +10,9 @@ polluting the bias-correction math, which stays anchored on MCI.
 from __future__ import annotations
 
 import sqlite3
-from datetime import date, timedelta
+from datetime import timedelta
+
+from .. import config
 
 
 def compute_offset(
@@ -19,7 +21,7 @@ def compute_offset(
     regional: str = "asos_mci",
     local: str = "gw2000_local",
 ) -> dict:
-    cutoff = (date.today() - timedelta(days=window_days)).isoformat()
+    cutoff = (config.local_today() - timedelta(days=window_days)).isoformat()
     row = conn.execute(
         """
         SELECT

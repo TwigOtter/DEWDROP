@@ -52,7 +52,7 @@ class OpenMeteoSource(ForecastSource):
         lows = daily.get("temperature_2m_min", [])
         precip = daily.get("precipitation_sum", [])
         codes = daily.get("weathercode", [])
-        fetched_on = self._today_utc()
+        fetched_on = self._today_local()
 
         out: list[ForecastDay] = []
         for i, d in enumerate(dates):

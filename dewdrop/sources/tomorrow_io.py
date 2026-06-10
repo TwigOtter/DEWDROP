@@ -51,7 +51,7 @@ class TomorrowIoSource(ForecastSource):
         resp.raise_for_status()
         data = resp.json()
 
-        fetched_on = self._today_utc()
+        fetched_on = self._today_local()
         out: list[ForecastDay] = []
         for day in data.get("timelines", {}).get("daily", []) or []:
             d = date.fromisoformat(day["time"][:10])

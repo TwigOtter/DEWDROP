@@ -15,7 +15,6 @@ import sqlite3
 from collections import Counter, defaultdict
 from datetime import date, datetime, timezone
 from math import sqrt
-from zoneinfo import ZoneInfo
 
 from .. import config
 
@@ -91,12 +90,14 @@ def ensemble_forecast(
     """Bias-corrected ensemble forecast for each upcoming target date."""
     actuals_source = actuals_source or config.ENABLED_ACTUALS[0]
     # "Today" must be the local calendar day (design uses local dates), not UTC,
-    # or +0d rolls to tomorrow at 00:00 UTC (7pm CDT). Treat a naive `now` as UTC.
-    tz = ZoneInfo(config.TIMEZONE)
-    now = now or datetime.now(tz)
-    if now.tzinfo is None:
-        now = now.replace(tzinfo=timezone.utc)
-    today = now.astimezone(tz).date()
+    # or +0d rolls to tomorrow at 00:00 UTC (7pm CDT). The `now` override (tests)
+    # is honoured, treating a naive value as UTC.
+    if now is None:
+        today = config.local_today()
+    else:
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
+        today = now.astimezone(config.tz()).date()
     learned = {col: _learn(conn, col, actuals_source) for _, col in _METRICS}
 
     # Group latest forecasts by target_date.

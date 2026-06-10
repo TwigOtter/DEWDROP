@@ -16,7 +16,6 @@ without writing.
 import json
 import sys
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 from dewdrop import config
 from dewdrop.db import connect
@@ -27,8 +26,8 @@ from aggregate_station import aggregate
 
 
 def main(dry_run: bool = False) -> None:
-    tz = ZoneInfo(config.TIMEZONE)
-    today_local = datetime.now(tz).date()
+    tz = config.tz()
+    today_local = config.local_today()
 
     corrected = 0
     affected_past: set = set()
