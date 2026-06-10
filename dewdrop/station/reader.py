@@ -4,7 +4,7 @@ EcoWitt's livedata payload has four sections we care about:
 
 - ``common_list`` — outdoor sensors keyed by hex ID (``0x02`` outdoor temp, etc.)
 - ``wh25`` — single console block: indoor temp/humidity + barometric pressure
-- ``piezoRain`` — rain buckets keyed by hex ID (``0x10`` hour, ``0x11`` day, ...)
+- ``piezoRain`` — rain buckets keyed by hex ID (``0x10`` day, ``0x11`` week, ...)
 - ``debug`` — uptime / heap; ignored
 
 Values often have units baked into the string (``"73%"``, ``"0.00 mph"``,
@@ -32,12 +32,13 @@ _COMMON_MAP: dict[str, tuple[str, str]] = {
     "0x17": ("uv_index",       "float"),
 }
 
-# EcoWitt piezoRain IDs → field. Hourly/daily mapping is the most firmware-
-# sensitive piece here — adjust if observed daily accumulation doesn't reset
-# at local midnight.
+# EcoWitt piezoRain IDs → field. The accumulators run
+# 0x0D=event, 0x0E=rate, 0x10=day, 0x11=week, 0x12=month, 0x13=year.
+# We store the daily bucket (resets at local midnight) as precip_daily_mm.
+# There is no hourly accumulator in this payload, so precip_hourly_mm is
+# left unset rather than mapped to the wrong (non-resetting) bucket.
 _RAIN_MAP: dict[str, str] = {
-    "0x10": "precip_hourly_mm",
-    "0x11": "precip_daily_mm",
+    "0x10": "precip_daily_mm",
 }
 
 _NUMERIC = re.compile(r"-?\d+(?:\.\d+)?")
