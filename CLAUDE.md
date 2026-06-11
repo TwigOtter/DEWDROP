@@ -83,5 +83,13 @@ Production: `deploy/setup.sh` installs to `/opt/dewdrop` and enables the timers
   (ALTER TABLE backfill); re-running `scripts/init_db.py` upgrades a live DB
   in place.
 - **Ensemble guards** (§5.1): bias is only subtracted once a (service, horizon)
-  has `MIN_BIAS_SAMPLES` (default 3) scored days, and non-negative metrics
-  (precip, wind) are clamped at 0 after correction.
+  has `MIN_BIAS_SAMPLES` (default 3) scored days; non-negative metrics
+  (precip, wind) are clamped at 0 after correction; error samples are
+  winsorized (5th–95th pct, n ≥ 10) before bias/variance are learned.
+- **Precip is also scored categorically** (`precip_hit`, rain/no-rain at
+  `RAIN_THRESHOLD_MM`), which powers the ensemble's `rain_chance_pct`.
+- **ASOS condition labels are derived** at scoring time (`actuals/derive.py`)
+  from precip + the station's peak solar, and written back to the actuals row.
+- `/health` reports per-feed staleness; the UI shows a banner when degraded.
+- **Backups**: `dewdrop-backup.timer` runs `scripts/backup_db.py` nightly
+  (online `.backup` + retention, `DEWDROP_BACKUP_KEEP`).

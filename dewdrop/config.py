@@ -36,6 +36,15 @@ HORIZON_DAYS = int(_get("DEWDROP_HORIZON_DAYS", "10"))
 # uncorrected — a bias estimated from 1-2 days is mostly noise.
 MIN_BIAS_SAMPLES = int(_get("DEWDROP_MIN_BIAS_SAMPLES", "3"))
 
+# A day counts as "rain" at/above this much precip (mm). 0.25 mm ≈ the 0.01 in
+# trace threshold ASOS reports at. Drives categorical precip scoring
+# (rain/no-rain hits) and the ensemble's chance-of-rain vote.
+RAIN_THRESHOLD_MM = float(_get("DEWDROP_RAIN_THRESHOLD_MM", "0.25"))
+
+# ── Nightly DB backup (scripts/backup_db.py, dewdrop-backup.timer) ────────
+BACKUP_DIR = Path(_get("DEWDROP_BACKUP_DIR", str(ROOT / "data" / "backups")))
+BACKUP_KEEP = int(_get("DEWDROP_BACKUP_KEEP", "14"))  # newest N kept
+
 # ── Actuals: NOAA ASOS / Iowa State Mesonet (primary ground truth) ───────
 ASOS_STATION = _get("DEWDROP_ASOS_STATION", "MCI")
 ASOS_NETWORK = _get("DEWDROP_ASOS_NETWORK", "MO_ASOS")    # MCI is in Missouri

@@ -6,6 +6,16 @@ each metric and write a ``forecast_errors`` row. Errors are **signed**
 (predicted − actual): positive means the service ran hot / over-forecast.
 That sign is what later powers bias detection rather than mere accuracy.
 
+Besides the signed mm error, precip is also scored **categorically**
+(``precip_hit``): did the service call rain/no-rain correctly at the
+``RAIN_THRESHOLD_MM`` cutoff? Daily mm error is dominated by a few storm
+days; the hit rate is the better "which service do I trust" signal.
+
+Ground-truth rows with no condition label (ASOS daily summaries never have
+one) get a coarse label derived from observed precip + the local station's
+peak solar reading (see ``actuals.derive``); the derivation is written back
+to the actuals row so every view agrees.
+
 Scoring is anchored on a single authority: other actuals sources (e.g. the
 backyard GW2000) feed the microclimate offset, not the error history.
 
@@ -17,8 +27,10 @@ Idempotent: a (forecast_id, actuals_source) pair is scored at most once.
 from __future__ import annotations
 
 import sqlite3
+from datetime import date
 
 from .. import config
+from ..actuals.derive import derive_condition
 
 
 def _err(pred: float | None, actual: float | None) -> float | None:
@@ -27,11 +39,43 @@ def _err(pred: float | None, actual: float | None) -> float | None:
     return pred - actual
 
 
+def _hit(pred: float | None, actual: float | None) -> int | None:
+    """Categorical rain/no-rain agreement at the RAIN_THRESHOLD_MM cutoff."""
+    if pred is None or actual is None:
+        return None
+    thr = config.RAIN_THRESHOLD_MM
+    return 1 if (pred >= thr) == (actual >= thr) else 0
+
+
+def _backfill_conditions(conn: sqlite3.Connection, actuals_source: str) -> None:
+    """Derive + store a condition for ground-truth rows that lack one."""
+    rows = conn.execute(
+        """
+        SELECT a.date, a.precip_mm, a.temp_high_f, s.solar_max_wm2
+        FROM actuals a
+        LEFT JOIN station_daily s ON s.date = a.date
+        WHERE a.source = ? AND a.condition IS NULL
+        """,
+        (actuals_source,),
+    ).fetchall()
+    for r in rows:
+        cond = derive_condition(
+            date.fromisoformat(r["date"]), r["precip_mm"],
+            r["temp_high_f"], r["solar_max_wm2"],
+        )
+        if cond is not None:
+            conn.execute(
+                "UPDATE actuals SET condition = ? WHERE date = ? AND source = ?",
+                (cond, r["date"], actuals_source),
+            )
+
+
 def score_pending(conn: sqlite3.Connection, actuals_source: str | None = None) -> int:
     """Score every forecast that has matching ground-truth actuals but no
     error row yet. Returns the number of new ``forecast_errors`` rows written.
     """
     actuals_source = actuals_source or config.ENABLED_ACTUALS[0]
+    _backfill_conditions(conn, actuals_source)
     rows = conn.execute(
         """
         SELECT
@@ -64,6 +108,7 @@ def score_pending(conn: sqlite3.Connection, actuals_source: str | None = None) -
         high_err = _err(r["f_high"], r["a_high"])
         low_err = _err(r["f_low"], r["a_low"])
         precip_err = _err(r["f_precip"], r["a_precip"])
+        precip_hit = _hit(r["f_precip"], r["a_precip"])
         wind_err = _err(r["f_wind"], r["a_wind"])
         if r["f_cond"] is not None and r["a_cond"] is not None:
             cond_match = 1 if r["f_cond"] == r["a_cond"] else 0
@@ -79,12 +124,13 @@ def score_pending(conn: sqlite3.Connection, actuals_source: str | None = None) -
             """
             INSERT OR IGNORE INTO forecast_errors
               (forecast_id, service, target_date, horizon_days, actuals_source,
-               temp_high_err, temp_low_err, precip_err, wind_err, condition_match)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+               temp_high_err, temp_low_err, precip_err, precip_hit, wind_err,
+               condition_match)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (r["forecast_id"], r["service"], r["target_date"], r["horizon_days"],
-             r["actuals_source"], high_err, low_err, precip_err, wind_err,
-             cond_match),
+             r["actuals_source"], high_err, low_err, precip_err, precip_hit,
+             wind_err, cond_match),
         )
         written += 1
     return written

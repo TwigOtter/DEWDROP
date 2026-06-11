@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS forecast_errors (
     temp_high_err   REAL,                  -- predicted - actual (+ = ran hot)
     temp_low_err    REAL,                  -- predicted - actual (+ = ran hot)
     precip_err      REAL,                  -- predicted - actual (+ = over)
+    precip_hit      INTEGER,               -- rain/no-rain call: 1 hit, 0 miss
     wind_err        REAL,                  -- predicted - actual (+ = over)
     condition_match INTEGER,               -- 1 match, 0 miss, NULL if unknown
     UNIQUE (forecast_id, actuals_source)
@@ -134,6 +135,7 @@ _MIGRATIONS: tuple[tuple[str, str, str], ...] = (
     ("forecasts", "wind_max_mph", "REAL"),
     ("actuals", "wind_max_mph", "REAL"),
     ("forecast_errors", "wind_err", "REAL"),
+    ("forecast_errors", "precip_hit", "INTEGER"),
 )
 
 

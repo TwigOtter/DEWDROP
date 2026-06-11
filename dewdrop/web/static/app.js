@@ -31,10 +31,27 @@ document.querySelectorAll("#tabs button").forEach((btn) => {
   });
 });
 
-// ── Status line ──────────────────────────────────────────────────────────---
+// ── Status line + staleness banner ───────────────────────────────────────---
 api("/health").then((h) => {
   $("#status").textContent =
     `${h.location} · sources: ${h.sources.join(", ")} · truth: ${h.actuals.join(", ")}`;
+
+  const stale = [];
+  const feed = (f, kind) =>
+    `${f.name} ${kind} ${f.last ? `last ${f.last} (${f.age_days}d ago)` : "never fetched"}`;
+  (h.staleness?.forecasts || []).filter((f) => f.stale)
+    .forEach((f) => stale.push(feed(f, "forecasts")));
+  (h.staleness?.actuals || []).filter((f) => f.stale)
+    .forEach((f) => stale.push(feed(f, "actuals")));
+  const st = h.staleness?.station;
+  if (st?.stale) {
+    stale.push(st.last
+      ? `station readings last ${new Date(st.last).toLocaleString()} (${st.age_hours}h ago)`
+      : "station readings never recorded");
+  }
+  const banner = $("#stale-banner");
+  banner.hidden = !stale.length;
+  if (stale.length) banner.textContent = `⚠️ Stale data: ${stale.join(" · ")}`;
 });
 
 
@@ -220,10 +237,11 @@ loaders.dashboard = async () => {
       <div class="hi">${fmt(d.temp_high_f, "°")}${d.temp_high_f_sd != null ? `<span class="band"> ±${d.temp_high_f_sd}</span>` : ""}</div>
       <div class="lo">${fmt(d.temp_low_f, "°")}${d.temp_low_f_sd != null ? `<span class="band"> ±${d.temp_low_f_sd}</span>` : ""}</div>
       <div class="band">precip ${pm(d.precip_mm, d.precip_mm_sd, " mm")}</div>
+      <div class="band">rain ${fmt(d.rain_chance_pct, "%")}</div>
       <div class="band">wind ${pm(d.wind_max_mph, d.wind_max_mph_sd, " mph")}</div>
       <div class="cond">${d.condition || "—"}</div>
       ${home(d)}
-      <div class="band">${d.n_services} services</div>
+      <div class="band">${d.n_services} services · ${d.history_days ? `${d.history_days}d history` : "uncorrected"}</div>
     </div>`).join("");
 };
 
@@ -290,9 +308,9 @@ loaders.services = async () => {
   tb.innerHTML = data.services.length
     ? data.services.map((s) => `<tr>
         <td>${s.service}</td><td>${fmt(s.mae_high)}</td><td>${fmt(s.mae_low)}</td>
-        <td>${fmt(s.mae_precip)}</td><td>${fmt(s.mae_wind)}</td>
+        <td>${fmt(s.mae_precip)}</td><td>${fmt(s.precip_hit_pct, "%")}</td><td>${fmt(s.mae_wind)}</td>
         <td>${fmt(s.condition_pct, "%")}</td><td>${s.n}</td></tr>`).join("")
-    : '<tr><td colspan="7" class="empty">No scored forecasts yet.</td></tr>';
+    : '<tr><td colspan="8" class="empty">No scored forecasts yet.</td></tr>';
 };
 $("#svc-apply").addEventListener("click", () => loaders.services());
 
