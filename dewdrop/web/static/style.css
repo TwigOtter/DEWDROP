@@ -41,6 +41,11 @@ button#svc-apply, button#daily-load {
   background: var(--accent); color: #04121d; border: none; border-radius: 6px;
   padding: .35rem .8rem; cursor: pointer; font-weight: 600;
 }
+.seg button {
+  background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+  border-radius: 6px; padding: .3rem .8rem; cursor: pointer; font-size: .85rem;
+}
+.seg button.active { color: var(--ink); border-color: var(--accent); }
 
 /* ── Forecast cards ── */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: .7rem; }

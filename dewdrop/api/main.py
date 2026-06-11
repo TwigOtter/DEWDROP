@@ -124,8 +124,9 @@ def api_station_today() -> dict:
     utc_hi = (local_midnight + timedelta(days=1)).astimezone(timezone.utc).isoformat()
     with connect() as conn:
         rows = conn.execute(
-            """SELECT ts, temp_out_f, humidity_out, wind_speed_mph, wind_gust_mph,
-                      wind_dir_deg, precip_daily_mm, uv_index, solar_rad_wm2
+            """SELECT ts, temp_out_f, humidity_out, pressure_inhg,
+                      wind_speed_mph, wind_gust_mph, wind_dir_deg,
+                      precip_daily_mm, uv_index, solar_rad_wm2
                FROM station_readings
                WHERE ts >= ? AND ts < ?
                ORDER BY ts""",

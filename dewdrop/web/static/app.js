@@ -70,6 +70,34 @@ function degToCompass(deg) {
   return ["N","NE","E","SE","S","SW","W","NW"][Math.round(deg / 45) % 8];
 }
 
+// NWS "feels like": wind chill below 50°F with wind, heat index above 80°F
+// with humidity, plain air temperature in between.
+function feelsLikeF(t, rh, wind) {
+  if (t == null) return null;
+  if (t <= 50 && wind != null && wind > 3) {
+    const v = Math.pow(wind, 0.16);
+    return 35.74 + 0.6215 * t - 35.75 * v + 0.4275 * t * v;
+  }
+  if (t >= 80 && rh != null) {
+    // Rothfusz regression, applied when the simple estimate runs >= 80.
+    const simple = 0.5 * (t + 61.0 + (t - 68.0) * 1.2 + rh * 0.094);
+    if ((simple + t) / 2 < 80) return simple;
+    let hi = -42.379 + 2.04901523 * t + 10.14333127 * rh
+      - 0.22475541 * t * rh - 6.83783e-3 * t * t - 5.481717e-2 * rh * rh
+      + 1.22874e-3 * t * t * rh + 8.5282e-4 * t * rh * rh
+      - 1.99e-6 * t * t * rh * rh;
+    if (rh < 13 && t <= 112) {
+      hi -= ((13 - rh) / 4) * Math.sqrt((17 - Math.abs(t - 95)) / 17);
+    } else if (rh > 85 && t <= 87) {
+      hi += ((rh - 85) / 10) * ((87 - t) / 2);
+    }
+    return hi;
+  }
+  return t;
+}
+
+const round1 = (v) => (v == null ? null : Math.round(v * 10) / 10);
+
 function renderStationCards(live) {
   const box = $("#station-cards");
   if (!live || live.error || live.temp_out_f === undefined) {
@@ -78,10 +106,15 @@ function renderStationCards(live) {
   }
   const dir = degToCompass(live.wind_dir_deg);
   const gust = live.wind_gust_mph != null ? `<div class="sc-sub">Gust ${live.wind_gust_mph} mph</div>` : "";
+  const feels = round1(feelsLikeF(live.temp_out_f, live.humidity_out, live.wind_speed_mph));
   const cards = [
     `<div class="sc primary">
        <div class="sc-label">Outdoor Temp</div>
        <div class="sc-val warm">${fmt(live.temp_out_f, "°F")}</div>
+     </div>`,
+    `<div class="sc">
+       <div class="sc-label">Feels Like</div>
+       <div class="sc-val warm">${fmt(feels, "°F")}</div>
      </div>`,
     `<div class="sc">
        <div class="sc-label">Humidity</div>
@@ -161,11 +194,17 @@ function renderStationCharts(readings) {
     borderDash: dash || [],
   });
 
-  _makeChart("chart-temp", labels,
-    [line(readings.map((r) => r.temp_out_f), "#ff7043", "Temp (°F)")]);
+  _makeChart("chart-temp", labels, [
+    line(readings.map((r) => r.temp_out_f), "#ff7043", "Temp"),
+    line(readings.map((r) => round1(feelsLikeF(r.temp_out_f, r.humidity_out, r.wind_speed_mph))),
+         "#ffca28", "Feels like", [5, 3]),
+  ]);
 
   _makeChart("chart-humidity", labels,
     [line(readings.map((r) => r.humidity_out), "#4fc3f7", "Humidity (%)")]);
+
+  _makeChart("chart-pressure", labels,
+    [line(readings.map((r) => r.pressure_inhg), "#26a69a", "Pressure (inHg)")]);
 
   _makeChart("chart-wind", labels, [
     line(readings.map((r) => r.wind_speed_mph), "#66bb6a", "Speed"),
@@ -218,12 +257,12 @@ loaders.dashboard = async () => {
   }
 
   const box = $("#ensemble-cards");
+  _ensembleDays = data.days;
+  renderEnsembleChart();
   if (!data.days.length) {
     box.innerHTML = '<p class="empty">No forecasts collected yet.</p>';
-    renderEnsembleChart([]);
     return;
   }
-  renderEnsembleChart(data.days);
   const home = (d) => {
     if (hOff == null || lOff == null) return "";
     if (d.temp_high_f == null || d.temp_low_f == null) return "";
@@ -245,19 +284,41 @@ loaders.dashboard = async () => {
     </div>`).join("");
 };
 
-// High/low lines with shaded ±1σ bands on a shared x-axis of target dates.
+// Ensemble lines with shaded ±1σ bands on a shared x-axis of target dates,
+// switchable between temperature (high/low), precip and wind.
+const ENSEMBLE_METRICS = {
+  temp: {
+    title: "High / Low with ±1σ bands", y: "°F", nonNegative: false,
+    series: [["High (°F)", "temp_high_f", "#ff7043"],
+             ["Low (°F)", "temp_low_f", "#4fc3f7"]],
+  },
+  precip_mm: {
+    title: "Precipitation with ±1σ band", y: "mm", nonNegative: true,
+    series: [["Precip (mm)", "precip_mm", "#ab47bc"]],
+  },
+  wind_max_mph: {
+    title: "Max sustained wind with ±1σ band", y: "mph", nonNegative: true,
+    series: [["Wind max (mph)", "wind_max_mph", "#66bb6a"]],
+  },
+};
+let _ensembleDays = [];
+let _ensembleMetric = "temp";
 let ensembleChart = null;
-function renderEnsembleChart(days) {
+
+function renderEnsembleChart() {
   if (ensembleChart) { ensembleChart.destroy(); ensembleChart = null; }
+  const days = _ensembleDays;
+  const cfg = ENSEMBLE_METRICS[_ensembleMetric];
+  $("#ensemble-chart-title").textContent = cfg.title;
   if (!days.length) return;
 
   const labels = days.map((d) => `${fmtHorizon(d.horizon_days)} ${d.target_date.slice(5)}`);
   const edge = (vals, sds, sign) =>
-    vals.map((v, i) => (v == null || sds[i] == null ? v : v + sign * sds[i]));
-  const highs = days.map((d) => d.temp_high_f);
-  const highSd = days.map((d) => d.temp_high_f_sd);
-  const lows = days.map((d) => d.temp_low_f);
-  const lowSd = days.map((d) => d.temp_low_f_sd);
+    vals.map((v, i) => {
+      if (v == null || sds[i] == null) return v;
+      const e = v + sign * sds[i];
+      return cfg.nonNegative ? Math.max(e, 0) : e;
+    });
 
   const bandPair = (vals, sds, color) => [
     { label: "±band", data: edge(vals, sds, 1), borderWidth: 0, pointRadius: 0, fill: false },
@@ -269,24 +330,23 @@ function renderEnsembleChart(days) {
     tension: 0.25, pointRadius: 3, borderWidth: 2, fill: false,
   });
 
+  const datasets = cfg.series.flatMap(([label, key, color]) => {
+    const vals = days.map((d) => d[key]);
+    const sds = days.map((d) => d[key + "_sd"]);
+    return [...bandPair(vals, sds, color), line(label, vals, color)];
+  });
+
   ensembleChart = new Chart(document.getElementById("ensemble-chart"), {
     type: "line",
-    data: {
-      labels,
-      datasets: [
-        ...bandPair(highs, highSd, "#ff7043"),
-        line("High (°F)", highs, "#ff7043"),
-        ...bandPair(lows, lowSd, "#4fc3f7"),
-        line("Low (°F)", lows, "#4fc3f7"),
-      ],
-    },
+    data: { labels, datasets },
     options: {
       animation: false,
       spanGaps: true,
       scales: {
         x: { ticks: { color: "#8aa0b4", maxRotation: 0 }, grid: { color: "#27384a" } },
-        y: { title: { display: true, text: "°F", color: "#8aa0b4" },
-             ticks: { color: "#8aa0b4" }, grid: { color: "#27384a" } },
+        y: { title: { display: true, text: cfg.y, color: "#8aa0b4" },
+             ticks: { color: "#8aa0b4" }, grid: { color: "#27384a" },
+             ...(cfg.nonNegative ? { min: 0 } : {}) },
       },
       plugins: {
         legend: { labels: { color: "#e8eef4", boxWidth: 12,
@@ -296,6 +356,16 @@ function renderEnsembleChart(days) {
     },
   });
 }
+
+document.querySelectorAll("#ensemble-toggles button").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    if (btn.dataset.metric === _ensembleMetric) return;
+    document.querySelectorAll("#ensemble-toggles button")
+      .forEach((b) => b.classList.toggle("active", b === btn));
+    _ensembleMetric = btn.dataset.metric;
+    renderEnsembleChart();
+  });
+});
 
 
 // ════════════════════════════════════════════════════════════════════════════
