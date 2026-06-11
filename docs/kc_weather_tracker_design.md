@@ -48,6 +48,7 @@ CREATE TABLE forecasts (
     temp_high_f   REAL,                     -- predicted high (°F)
     temp_low_f    REAL,                     -- predicted low (°F)
     precip_mm     REAL,                     -- predicted precipitation amount (mm)
+    wind_max_mph  REAL,                     -- predicted max sustained wind (mph)
     condition     TEXT,                     -- normalised condition label (see §6)
     raw_json      TEXT,                     -- full API response blob for re-processing
     UNIQUE (service, fetched_on, target_date)
@@ -66,6 +67,7 @@ CREATE TABLE actuals (
     temp_high_f  REAL,
     temp_low_f   REAL,
     precip_mm    REAL,
+    wind_max_mph REAL,                      -- observed max sustained wind (mph)
     condition    TEXT,
     fetched_at   DATETIME NOT NULL
 );
@@ -86,11 +88,14 @@ CREATE TABLE forecast_errors (
     temp_high_err  REAL,                    -- predicted − actual (positive = ran hot)
     temp_low_err   REAL,                    -- predicted − actual (positive = ran hot)
     precip_err     REAL,                    -- predicted − actual (positive = over-forecast)
+    wind_err       REAL,                    -- predicted − actual (positive = over-forecast)
     condition_match INTEGER                 -- 1 if condition matched, 0 if not
 );
 ```
 
 > Errors are **signed**: positive = over-predicted, negative = under-predicted. This is what enables bias detection rather than just accuracy measurement.
+
+> Scoring is anchored on a **single ground-truth source** (`asos_mci`). Other actuals rows (e.g. the local station) are kept for the microclimate comparison but are not scored against, so they can't dilute the bias/variance history.
 
 ---
 
@@ -130,6 +135,14 @@ bias(service, horizon)     = AVG(temp_high_err)
 
 corrected_forecast         = raw_forecast − bias(service, horizon)
 ```
+
+Two guards keep the correction physical:
+
+- The bias is only subtracted once a `(service, horizon)` has at least
+  `MIN_BIAS_SAMPLES` scored days (default 3) — a bias estimated from one or
+  two days is mostly noise.
+- Non-negative quantities (precip, wind) are clamped at 0 after correction;
+  a correction past zero just means "none".
 
 ### 5.2 Weighted Aggregation
 

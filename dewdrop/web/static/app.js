@@ -3,6 +3,9 @@
 const api = (path) => fetch(path).then((r) => r.json());
 const $ = (sel) => document.querySelector(sel);
 const fmt = (v, suffix = "") => (v === null || v === undefined ? "—" : v + suffix);
+// Horizon label: +2d for forecasts, 0d for same-day, -1d for snapshots
+// mistakenly taken after the target day (legacy rollover bug rows).
+const fmtHorizon = (h) => (h > 0 ? `+${h}d` : `${h}d`);
 
 const PALETTE = ["#4fc3f7", "#ff7043", "#66bb6a", "#ab47bc", "#ffca28", "#26a69a"];
 
@@ -200,24 +203,81 @@ loaders.dashboard = async () => {
   const box = $("#ensemble-cards");
   if (!data.days.length) {
     box.innerHTML = '<p class="empty">No forecasts collected yet.</p>';
+    renderEnsembleChart([]);
     return;
   }
+  renderEnsembleChart(data.days);
   const home = (d) => {
     if (hOff == null || lOff == null) return "";
     if (d.temp_high_f == null || d.temp_low_f == null) return "";
     return `<div class="band">home: ${(d.temp_high_f + hOff).toFixed(1)}° / ${(d.temp_low_f + lOff).toFixed(1)}°</div>`;
   };
+  const pm = (v, sd, unit) =>
+    `${fmt(v, unit)}${sd != null ? ` ±${sd}` : ""}`;
   box.innerHTML = data.days.map((d) => `
     <div class="card">
-      <div class="date">+${d.horizon_days}d · ${d.target_date}</div>
+      <div class="date">${fmtHorizon(d.horizon_days)} · ${d.target_date}</div>
       <div class="hi">${fmt(d.temp_high_f, "°")}${d.temp_high_f_sd != null ? `<span class="band"> ±${d.temp_high_f_sd}</span>` : ""}</div>
       <div class="lo">${fmt(d.temp_low_f, "°")}${d.temp_low_f_sd != null ? `<span class="band"> ±${d.temp_low_f_sd}</span>` : ""}</div>
-      <div class="band">precip ${fmt(d.precip_mm, " mm")}</div>
+      <div class="band">precip ${pm(d.precip_mm, d.precip_mm_sd, " mm")}</div>
+      <div class="band">wind ${pm(d.wind_max_mph, d.wind_max_mph_sd, " mph")}</div>
       <div class="cond">${d.condition || "—"}</div>
       ${home(d)}
       <div class="band">${d.n_services} services</div>
     </div>`).join("");
 };
+
+// High/low lines with shaded ±1σ bands on a shared x-axis of target dates.
+let ensembleChart = null;
+function renderEnsembleChart(days) {
+  if (ensembleChart) { ensembleChart.destroy(); ensembleChart = null; }
+  if (!days.length) return;
+
+  const labels = days.map((d) => `${fmtHorizon(d.horizon_days)} ${d.target_date.slice(5)}`);
+  const edge = (vals, sds, sign) =>
+    vals.map((v, i) => (v == null || sds[i] == null ? v : v + sign * sds[i]));
+  const highs = days.map((d) => d.temp_high_f);
+  const highSd = days.map((d) => d.temp_high_f_sd);
+  const lows = days.map((d) => d.temp_low_f);
+  const lowSd = days.map((d) => d.temp_low_f_sd);
+
+  const bandPair = (vals, sds, color) => [
+    { label: "±band", data: edge(vals, sds, 1), borderWidth: 0, pointRadius: 0, fill: false },
+    { label: "±band", data: edge(vals, sds, -1), borderWidth: 0, pointRadius: 0,
+      backgroundColor: color + "2e", fill: "-1" },
+  ];
+  const line = (label, vals, color) => ({
+    label, data: vals, borderColor: color, backgroundColor: color,
+    tension: 0.25, pointRadius: 3, borderWidth: 2, fill: false,
+  });
+
+  ensembleChart = new Chart(document.getElementById("ensemble-chart"), {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        ...bandPair(highs, highSd, "#ff7043"),
+        line("High (°F)", highs, "#ff7043"),
+        ...bandPair(lows, lowSd, "#4fc3f7"),
+        line("Low (°F)", lows, "#4fc3f7"),
+      ],
+    },
+    options: {
+      animation: false,
+      spanGaps: true,
+      scales: {
+        x: { ticks: { color: "#8aa0b4", maxRotation: 0 }, grid: { color: "#27384a" } },
+        y: { title: { display: true, text: "°F", color: "#8aa0b4" },
+             ticks: { color: "#8aa0b4" }, grid: { color: "#27384a" } },
+      },
+      plugins: {
+        legend: { labels: { color: "#e8eef4", boxWidth: 12,
+                            filter: (item) => item.text !== "±band" } },
+        tooltip: { filter: (item) => item.dataset.label !== "±band" },
+      },
+    },
+  });
+}
 
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -230,8 +290,9 @@ loaders.services = async () => {
   tb.innerHTML = data.services.length
     ? data.services.map((s) => `<tr>
         <td>${s.service}</td><td>${fmt(s.mae_high)}</td><td>${fmt(s.mae_low)}</td>
-        <td>${fmt(s.mae_precip)}</td><td>${fmt(s.condition_pct, "%")}</td><td>${s.n}</td></tr>`).join("")
-    : '<tr><td colspan="6" class="empty">No scored forecasts yet.</td></tr>';
+        <td>${fmt(s.mae_precip)}</td><td>${fmt(s.mae_wind)}</td>
+        <td>${fmt(s.condition_pct, "%")}</td><td>${s.n}</td></tr>`).join("")
+    : '<tr><td colspan="7" class="empty">No scored forecasts yet.</td></tr>';
 };
 $("#svc-apply").addEventListener("click", () => loaders.services());
 
@@ -276,14 +337,15 @@ async function loadDaily() {
   const data = await api(`/api/daily/${date}`);
   $("#daily-actuals").innerHTML = data.actuals.length
     ? "<strong>Actuals:</strong> " + data.actuals.map((a) =>
-        `${a.source}: ${fmt(a.temp_high_f, "°")}/${fmt(a.temp_low_f, "°")}, ${fmt(a.precip_mm, "mm")}, ${a.condition || "—"}`).join(" · ")
+        `${a.source}: ${fmt(a.temp_high_f, "°")}/${fmt(a.temp_low_f, "°")}, ${fmt(a.precip_mm, "mm")}, wind ${fmt(a.wind_max_mph, "mph")}, ${a.condition || "—"}`).join(" · ")
     : "<span class='empty'>No actuals recorded for this date.</span>";
   const tb = $("#daily-table tbody");
   tb.innerHTML = data.forecasts.length
     ? data.forecasts.map((f) => `<tr>
-        <td>${f.service}</td><td>+${f.horizon_days}d</td><td>${fmt(f.temp_high_f, "°")}</td>
-        <td>${fmt(f.temp_low_f, "°")}</td><td>${fmt(f.precip_mm, "mm")}</td><td>${f.condition || "—"}</td></tr>`).join("")
-    : '<tr><td colspan="6" class="empty">No forecasts for this date.</td></tr>';
+        <td>${f.service}</td><td>${fmtHorizon(f.horizon_days)}</td><td>${fmt(f.temp_high_f, "°")}</td>
+        <td>${fmt(f.temp_low_f, "°")}</td><td>${fmt(f.precip_mm, "mm")}</td>
+        <td>${fmt(f.wind_max_mph, "mph")}</td><td>${f.condition || "—"}</td></tr>`).join("")
+    : '<tr><td colspan="7" class="empty">No forecasts for this date.</td></tr>';
 }
 $("#daily-load").addEventListener("click", loadDaily);
 loaders.daily = () => { if (!$("#daily-date").value) $("#daily-date").value = new Date().toISOString().slice(0, 10); };
@@ -295,12 +357,14 @@ loaders.daily = () => { if (!$("#daily-date").value) $("#daily-date").value = ne
 loaders.raw = async () => {
   const data = await api("/api/errors?limit=200");
   const tb = $("#raw-table tbody");
+  const round2 = (v) => (v == null ? null : Math.round(v * 100) / 100);
   tb.innerHTML = data.errors.length
     ? data.errors.map((e) => `<tr>
-        <td>${e.id}</td><td>${e.service}</td><td>${e.target_date}</td><td>+${e.horizon_days}d</td>
-        <td>${e.actuals_source}</td><td>${fmt(e.temp_high_err)}</td><td>${fmt(e.temp_low_err)}</td>
-        <td>${fmt(e.precip_err)}</td><td>${e.condition_match === null ? "—" : (e.condition_match ? "✓" : "✗")}</td></tr>`).join("")
-    : '<tr><td colspan="9" class="empty">No error rows yet.</td></tr>';
+        <td>${e.id}</td><td>${e.service}</td><td>${e.target_date}</td><td>${fmtHorizon(e.horizon_days)}</td>
+        <td>${e.actuals_source}</td><td>${fmt(round2(e.temp_high_err))}</td><td>${fmt(round2(e.temp_low_err))}</td>
+        <td>${fmt(round2(e.precip_err))}</td><td>${fmt(round2(e.wind_err))}</td>
+        <td>${e.condition_match === null ? "—" : (e.condition_match ? "✓" : "✗")}</td></tr>`).join("")
+    : '<tr><td colspan="10" class="empty">No error rows yet.</td></tr>';
 };
 
 

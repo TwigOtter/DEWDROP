@@ -31,6 +31,11 @@ TIMEZONE = _get("DEWDROP_TIMEZONE", "America/Chicago")
 # How many days out to snapshot, today (horizon 0) through +HORIZON_DAYS.
 HORIZON_DAYS = int(_get("DEWDROP_HORIZON_DAYS", "10"))
 
+# Minimum scored days per (service, horizon) before the ensemble trusts the
+# learned bias enough to subtract it. Below this, forecasts are blended
+# uncorrected — a bias estimated from 1-2 days is mostly noise.
+MIN_BIAS_SAMPLES = int(_get("DEWDROP_MIN_BIAS_SAMPLES", "3"))
+
 # ── Actuals: NOAA ASOS / Iowa State Mesonet (primary ground truth) ───────
 ASOS_STATION = _get("DEWDROP_ASOS_STATION", "MCI")
 ASOS_NETWORK = _get("DEWDROP_ASOS_NETWORK", "MO_ASOS")    # MCI is in Missouri

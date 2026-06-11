@@ -10,6 +10,7 @@ descriptive User-Agent.
 """
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from datetime import date
 
@@ -20,6 +21,14 @@ from ..models import ForecastDay
 from .base import ForecastSource
 
 USER_AGENT = "DEWDROP/0.1 (weather verification; contact twig@twigotter.com)"
+
+
+def _wind_mph(text: str | None) -> float | None:
+    """Parse NWS windSpeed strings ('10 mph', '5 to 15 mph') -> max mph."""
+    if not text:
+        return None
+    nums = re.findall(r"\d+(?:\.\d+)?", text)
+    return max(float(n) for n in nums) if nums else None
 
 
 class NWSSource(ForecastSource):
@@ -53,6 +62,10 @@ class NWSSource(ForecastSource):
         for p in periods:
             d = date.fromisoformat(p["startTime"][:10])
             raws[d].append(p)
+            wind = _wind_mph(p.get("windSpeed"))
+            if wind is not None:
+                prev = days[d].get("wind_max_mph")
+                days[d]["wind_max_mph"] = wind if prev is None else max(prev, wind)
             if p.get("isDaytime"):
                 days[d]["temp_high_f"] = p.get("temperature")
                 days[d]["condition"] = normalise.normalise_text(p.get("shortForecast"))
@@ -76,6 +89,7 @@ class NWSSource(ForecastSource):
                     temp_high_f=f.get("temp_high_f"),
                     temp_low_f=f.get("temp_low_f"),
                     precip_mm=None,  # not provided by this endpoint
+                    wind_max_mph=f.get("wind_max_mph"),
                     condition=f.get("condition"),
                     raw=raws[d],
                 )

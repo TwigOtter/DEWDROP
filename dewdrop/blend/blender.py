@@ -18,11 +18,13 @@ from math import sqrt
 
 from .. import config
 
-# Numeric metrics we ensemble: forecast column, error column.
+# Numeric metrics we ensemble: forecast column, error column, and whether the
+# quantity is physically non-negative (bias correction must not push it < 0).
 _METRICS = (
-    ("temp_high_f", "temp_high_err"),
-    ("temp_low_f", "temp_low_err"),
-    ("precip_mm", "precip_err"),
+    ("temp_high_f", "temp_high_err", False),
+    ("temp_low_f", "temp_low_err", False),
+    ("precip_mm", "precip_err", True),
+    ("wind_max_mph", "wind_err", True),
 )
 
 
@@ -38,6 +40,7 @@ def _learn(
                COUNT({err_col})          AS n
         FROM forecast_errors
         WHERE actuals_source = ? AND {err_col} IS NOT NULL
+          AND horizon_days >= 0
         GROUP BY service, horizon_days
         """,
         (actuals_source,),
@@ -55,7 +58,8 @@ def _latest_forecasts(conn: sqlite3.Connection, today: date) -> list[sqlite3.Row
     return conn.execute(
         """
         SELECT f.service, f.target_date, f.horizon_days,
-               f.temp_high_f, f.temp_low_f, f.precip_mm, f.condition
+               f.temp_high_f, f.temp_low_f, f.precip_mm, f.wind_max_mph,
+               f.condition
         FROM forecasts f
         JOIN (
             SELECT service, target_date, MAX(fetched_on) AS latest
@@ -98,7 +102,7 @@ def ensemble_forecast(
         if now.tzinfo is None:
             now = now.replace(tzinfo=timezone.utc)
         today = now.astimezone(config.tz()).date()
-    learned = {col: _learn(conn, col, actuals_source) for _, col in _METRICS}
+    learned = {col: _learn(conn, col, actuals_source) for _, col, _ in _METRICS}
 
     # Group latest forecasts by target_date.
     by_date: dict[str, list[sqlite3.Row]] = defaultdict(list)
@@ -112,7 +116,7 @@ def ensemble_forecast(
         day: dict = {"target_date": target_date, "horizon_days": horizon,
                      "n_services": len(rows)}
 
-        for fcol, ecol in _METRICS:
+        for fcol, ecol, non_negative in _METRICS:
             stats = learned[ecol]
             corrected: list[tuple[float, float]] = []
             for r in rows:
@@ -121,9 +125,18 @@ def ensemble_forecast(
                     continue
                 bias, variance, n = stats.get((r["service"], r["horizon_days"]),
                                               (0.0, 0.0, 0))
+                # A bias estimated from a handful of scored days is mostly
+                # noise — don't correct until there's enough history.
+                if n < config.MIN_BIAS_SAMPLES:
+                    bias = 0.0
+                value = raw - bias
+                # De-biasing can't make a physical quantity negative
+                # (e.g. precip): a correction past zero just means "none".
+                if non_negative:
+                    value = max(value, 0.0)
                 # inverse-variance weight; unknown/zero variance -> weight 1.0
                 weight = 1.0 / variance if variance > 0 else 1.0
-                corrected.append((raw - bias, weight))
+                corrected.append((value, weight))
             res = _weighted(corrected)
             if res is None:
                 day[fcol] = None
@@ -161,6 +174,7 @@ def service_bias_curves(
                COUNT({err_col}) AS n
         FROM forecast_errors
         WHERE actuals_source = ? AND {err_col} IS NOT NULL
+          AND horizon_days >= 0
         GROUP BY service, horizon_days
         ORDER BY service, horizon_days
         """,

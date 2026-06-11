@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS forecasts (
     temp_high_f   REAL,
     temp_low_f    REAL,
     precip_mm     REAL,
+    wind_max_mph  REAL,                    -- max sustained wind for the day
     condition     TEXT,                    -- normalised label (see normalise.py)
     raw_json      TEXT,                    -- provider blob, for re-processing
     UNIQUE (service, fetched_on, target_date)
@@ -46,6 +47,7 @@ CREATE TABLE IF NOT EXISTS actuals (
     temp_high_f  REAL,
     temp_low_f   REAL,
     precip_mm    REAL,
+    wind_max_mph REAL,                     -- max sustained wind for the day
     condition    TEXT,
     fetched_at   DATETIME NOT NULL,        -- ISO-8601 UTC
     UNIQUE (date, source)
@@ -62,6 +64,7 @@ CREATE TABLE IF NOT EXISTS forecast_errors (
     temp_high_err   REAL,                  -- predicted - actual (+ = ran hot)
     temp_low_err    REAL,                  -- predicted - actual (+ = ran hot)
     precip_err      REAL,                  -- predicted - actual (+ = over)
+    wind_err        REAL,                  -- predicted - actual (+ = over)
     condition_match INTEGER,               -- 1 match, 0 miss, NULL if unknown
     UNIQUE (forecast_id, actuals_source)
 );
@@ -125,9 +128,26 @@ def connect(db_path: Path | None = None) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+# Columns added after the initial release. CREATE TABLE IF NOT EXISTS won't
+# touch an existing table, so init_db backfills these with ALTER TABLE.
+_MIGRATIONS: tuple[tuple[str, str, str], ...] = (
+    ("forecasts", "wind_max_mph", "REAL"),
+    ("actuals", "wind_max_mph", "REAL"),
+    ("forecast_errors", "wind_err", "REAL"),
+)
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, column, decl in _MIGRATIONS:
+        cols = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def init_db(db_path: Path | None = None) -> None:
     with connect(db_path) as conn:
         conn.executescript(SCHEMA)
+        _migrate(conn)
 
 
 def insert_forecasts(conn: sqlite3.Connection, records: Iterable[ForecastDay]) -> int:
@@ -138,14 +158,15 @@ def insert_forecasts(conn: sqlite3.Connection, records: Iterable[ForecastDay]) -
     """
     rows = [
         (r.service, _d(r.fetched_on), _d(r.target_date), r.horizon_days,
-         r.temp_high_f, r.temp_low_f, r.precip_mm, r.condition, r.raw_json)
+         r.temp_high_f, r.temp_low_f, r.precip_mm, r.wind_max_mph,
+         r.condition, r.raw_json)
         for r in records
     ]
     cur = conn.executemany(
         """INSERT OR IGNORE INTO forecasts
            (service, fetched_on, target_date, horizon_days,
-            temp_high_f, temp_low_f, precip_mm, condition, raw_json)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            temp_high_f, temp_low_f, precip_mm, wind_max_mph, condition, raw_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         rows,
     )
     return cur.rowcount
@@ -155,13 +176,14 @@ def insert_actuals(conn: sqlite3.Connection, actuals: Iterable[ActualDay]) -> in
     """INSERT OR IGNORE actuals rows (one per date+source). Returns new count."""
     rows = [
         (_d(a.date), a.source, a.temp_high_f, a.temp_low_f, a.precip_mm,
-         a.condition, a.fetched_at.isoformat())
+         a.wind_max_mph, a.condition, a.fetched_at.isoformat())
         for a in actuals
     ]
     cur = conn.executemany(
         """INSERT OR IGNORE INTO actuals
-           (date, source, temp_high_f, temp_low_f, precip_mm, condition, fetched_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+           (date, source, temp_high_f, temp_low_f, precip_mm, wind_max_mph,
+            condition, fetched_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
         rows,
     )
     return cur.rowcount

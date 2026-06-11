@@ -23,6 +23,8 @@ BASE_URL = "https://mesonet.agron.iastate.edu/api/1/daily.json"
 
 # ASOS precip is reported in inches; we store mm.
 _IN_TO_MM = 25.4
+# IEM wind speeds are in knots; we store mph.
+_KT_TO_MPH = 1.15078
 
 
 def _first(d: dict, *keys: str) -> float | None:
@@ -60,6 +62,9 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
     low = _first(rec, "min_tmpf", "low", "min_temp_f")
     precip_in = _first(rec, "precip", "pday", "precip_in")
     precip_mm = precip_in * _IN_TO_MM if precip_in is not None else None
+    # Max *sustained* wind (not gust), reported in knots.
+    wind_kt = _first(rec, "max_wind_speed_kts", "max_sknt")
+    wind_mph = wind_kt * _KT_TO_MPH if wind_kt is not None else None
 
     return [
         ActualDay(
@@ -68,6 +73,7 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
             temp_high_f=high,
             temp_low_f=low,
             precip_mm=precip_mm,
+            wind_max_mph=wind_mph,
             condition=None,  # daily summary carries no single condition label
             fetched_at=datetime.now(timezone.utc),
         )

@@ -59,6 +59,10 @@
       <h2>Bias-corrected ensemble forecast</h2>
       <p class="hint">Weighted by each service's inverse error variance per horizon. Bands are ±1σ across services.</p>
       <p id="ensemble-microclimate" class="hint"></p>
+      <div class="chart-box">
+        <div class="chart-title">High / Low with ±1σ bands</div>
+        <canvas id="ensemble-chart" height="110"></canvas>
+      </div>
       <div id="ensemble-cards" class="cards"></div>
     </section>
 
@@ -72,7 +76,7 @@
       </div>
       <table id="svc-table"><thead><tr>
         <th>Service</th><th>MAE high (°F)</th><th>MAE low (°F)</th>
-        <th>MAE precip (mm)</th><th>Condition %</th><th>Data points</th>
+        <th>MAE precip (mm)</th><th>MAE wind (mph)</th><th>Condition %</th><th>Data points</th>
       </tr></thead><tbody></tbody></table>
     </section>
 
@@ -85,6 +89,7 @@
             <option value="temp_high_err">High temp</option>
             <option value="temp_low_err">Low temp</option>
             <option value="precip_err">Precip</option>
+            <option value="wind_err">Wind</option>
           </select>
         </label>
       </div>
@@ -101,7 +106,7 @@
       </div>
       <div id="daily-actuals"></div>
       <table id="daily-table"><thead><tr>
-        <th>Service</th><th>Horizon</th><th>High</th><th>Low</th><th>Precip</th><th>Condition</th>
+        <th>Service</th><th>Horizon</th><th>High</th><th>Low</th><th>Precip</th><th>Wind</th><th>Condition</th>
       </tr></thead><tbody></tbody></table>
     </section>
 
@@ -110,7 +115,7 @@
       <h2>Raw error log</h2>
       <table id="raw-table"><thead><tr>
         <th>#</th><th>Service</th><th>Target</th><th>Horizon</th><th>Actuals</th>
-        <th>High err</th><th>Low err</th><th>Precip err</th><th>Cond?</th>
+        <th>High err</th><th>Low err</th><th>Precip err</th><th>Wind err</th><th>Cond?</th>
       </tr></thead><tbody></tbody></table>
     </section>
 

@@ -30,6 +30,7 @@ def aggregate(target_date: date) -> None:
                    MIN(humidity_out)  AS humidity_low,
                    AVG(humidity_out)  AS humidity_avg,
                    MAX(wind_gust_mph) AS wind_max_mph,
+                   MAX(wind_speed_mph) AS wind_sustained_max_mph,
                    AVG(wind_speed_mph) AS wind_avg_mph,
                    MAX(precip_daily_mm) AS precip_total_mm,
                    MAX(uv_index)      AS uv_max,
@@ -72,6 +73,8 @@ def aggregate(target_date: date) -> None:
                 temp_high_f=row["temp_high_f"],
                 temp_low_f=row["temp_low_f"],
                 precip_mm=row["precip_total_mm"],
+                # Sustained max (not gust), to match the forecast wind metric.
+                wind_max_mph=row["wind_sustained_max_mph"],
                 condition=None,
                 fetched_at=datetime.now(timezone.utc),
             )

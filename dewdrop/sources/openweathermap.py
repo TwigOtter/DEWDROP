@@ -84,6 +84,9 @@ class OpenWeatherMapSource(ForecastSource):
                 + (s.get("snow", {}).get("3h") or 0.0)
                 for s in slices
             )
+            # units=imperial -> wind.speed is already mph
+            winds = [s["wind"]["speed"] for s in slices
+                     if s.get("wind", {}).get("speed") is not None]
             condition = _worst([
                 normalise.normalise_text(
                     (s.get("weather") or [{}])[0].get("description")
@@ -99,6 +102,7 @@ class OpenWeatherMapSource(ForecastSource):
                     temp_high_f=max(highs) if highs else None,
                     temp_low_f=min(lows) if lows else None,
                     precip_mm=precip,
+                    wind_max_mph=max(winds) if winds else None,
                     condition=condition,
                     raw=slices,
                 )

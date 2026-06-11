@@ -70,6 +70,7 @@ class TomorrowIoSource(ForecastSource):
                     temp_high_f=v.get("temperatureMax"),
                     temp_low_f=v.get("temperatureMin"),
                     precip_mm=(rain_in + snow_in) * 25.4,
+                    wind_max_mph=v.get("windSpeedMax", v.get("windSpeedAvg")),
                     condition=cond,
                     raw=day,
                 )

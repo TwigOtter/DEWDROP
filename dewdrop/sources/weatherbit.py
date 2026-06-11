@@ -54,6 +54,10 @@ class WeatherbitSource(ForecastSource):
                     temp_high_f=day.get("max_temp"),
                     temp_low_f=day.get("min_temp"),
                     precip_mm=precip_in * 25.4,
+                    # Weatherbit's daily endpoint only exposes the *average*
+                    # sustained wind (plus gust), not a daily max — the bias
+                    # correction absorbs the systematic low offset.
+                    wind_max_mph=day.get("wind_spd"),
                     condition=cond,
                     raw=day,
                 )

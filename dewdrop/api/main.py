@@ -154,6 +154,7 @@ def api_services(
                    AVG(ABS(temp_high_err)) AS mae_high,
                    AVG(ABS(temp_low_err))  AS mae_low,
                    AVG(ABS(precip_err))    AS mae_precip,
+                   AVG(ABS(wind_err))      AS mae_wind,
                    AVG(condition_match) * 100.0 AS condition_pct,
                    COUNT(*) AS n
             FROM forecast_errors
@@ -172,6 +173,7 @@ def api_services(
             "services": [
                 {"service": r["service"], "mae_high": _r(r["mae_high"]),
                  "mae_low": _r(r["mae_low"]), "mae_precip": _r(r["mae_precip"]),
+                 "mae_wind": _r(r["mae_wind"]),
                  "condition_pct": _r(r["condition_pct"], 1), "n": r["n"]}
                 for r in rows
             ]}
@@ -180,7 +182,7 @@ def api_services(
 # ── Bias curves (per service, mean signed error by horizon) ──────────────────
 @app.get("/api/bias-curves")
 def api_bias_curves(metric: str = "temp_high_err", source: str | None = None) -> dict:
-    allowed = {"temp_high_err", "temp_low_err", "precip_err"}
+    allowed = {"temp_high_err", "temp_low_err", "precip_err", "wind_err"}
     if metric not in allowed:
         metric = "temp_high_err"
     with connect() as conn:
@@ -195,7 +197,7 @@ def api_daily(target_date: str) -> dict:
         forecasts = conn.execute(
             """
             SELECT service, horizon_days, fetched_on,
-                   temp_high_f, temp_low_f, precip_mm, condition
+                   temp_high_f, temp_low_f, precip_mm, wind_max_mph, condition
             FROM forecasts WHERE target_date = ?
             ORDER BY service, horizon_days DESC
             """,
@@ -203,7 +205,8 @@ def api_daily(target_date: str) -> dict:
         ).fetchall()
         actuals = conn.execute(
             """
-            SELECT source, temp_high_f, temp_low_f, precip_mm, condition
+            SELECT source, temp_high_f, temp_low_f, precip_mm, wind_max_mph,
+                   condition
             FROM actuals WHERE date = ?
             """,
             (target_date,),
@@ -220,7 +223,8 @@ def api_errors(limit: int = 200) -> dict:
         rows = conn.execute(
             """
             SELECT id, service, target_date, horizon_days, actuals_source,
-                   temp_high_err, temp_low_err, precip_err, condition_match
+                   temp_high_err, temp_low_err, precip_err, wind_err,
+                   condition_match
             FROM forecast_errors
             ORDER BY id DESC LIMIT ?
             """,
