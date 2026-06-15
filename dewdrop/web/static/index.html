@@ -3,14 +3,14 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>DEWDROP — KC Weather</title>
+  <title>DEWDROP</title>
   <link rel="stylesheet" href="/static/style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 </head>
 <body>
   <header>
     <h1>💧 DEWDROP</h1>
-    <span class="subtitle">KC Weather Accuracy Tracker</span>
+    <span class="subtitle">Demon Environmental Weather Detection, Recording, Observation, and Prediction</span>
     <span id="status" class="status"></span>
   </header>
 
@@ -22,6 +22,8 @@
     <button data-view="daily">Daily Drill-down</button>
     <button data-view="raw">Raw Log</button>
   </nav>
+
+  <div id="stale-banner" class="stale-banner" hidden></div>
 
   <main>
 
@@ -51,6 +53,10 @@
           <div class="chart-title">Accumulated Precip (in)</div>
           <canvas id="chart-precip"></canvas>
         </div>
+        <div class="chart-box">
+          <div class="chart-title">Pressure (inHg)</div>
+          <canvas id="chart-pressure"></canvas>
+        </div>
       </div>
     </section>
 
@@ -58,6 +64,16 @@
     <section id="dashboard" class="view">
       <h2>Bias-corrected ensemble forecast</h2>
       <p class="hint">Weighted by each service's inverse error variance per horizon. Bands are ±1σ across services.</p>
+      <p id="ensemble-microclimate" class="hint"></p>
+      <div class="controls seg" id="ensemble-toggles">
+        <button data-metric="temp" class="active">Temperature</button>
+        <button data-metric="precip_mm">Precip</button>
+        <button data-metric="wind_max_mph">Wind</button>
+      </div>
+      <div class="chart-box">
+        <div class="chart-title" id="ensemble-chart-title">High / Low with ±1σ bands</div>
+        <canvas id="ensemble-chart" height="110"></canvas>
+      </div>
       <div id="ensemble-cards" class="cards"></div>
     </section>
 
@@ -71,7 +87,7 @@
       </div>
       <table id="svc-table"><thead><tr>
         <th>Service</th><th>MAE high (°F)</th><th>MAE low (°F)</th>
-        <th>MAE precip (in)</th><th>Condition %</th><th>Data points</th>
+        <th>MAE precip (in)</th><th>Rain hit %</th><th>MAE wind (mph)</th><th>Condition %</th><th>Data points</th>
       </tr></thead><tbody></tbody></table>
     </section>
 
@@ -84,6 +100,7 @@
             <option value="temp_high_err">High temp</option>
             <option value="temp_low_err">Low temp</option>
             <option value="precip_err">Precip</option>
+            <option value="wind_err">Wind</option>
           </select>
         </label>
       </div>
@@ -100,7 +117,7 @@
       </div>
       <div id="daily-actuals"></div>
       <table id="daily-table"><thead><tr>
-        <th>Service</th><th>Horizon</th><th>High</th><th>Low</th><th>Precip</th><th>Condition</th>
+        <th>Service</th><th>Horizon</th><th>High</th><th>Low</th><th>Precip</th><th>Wind</th><th>Condition</th>
       </tr></thead><tbody></tbody></table>
     </section>
 
@@ -109,7 +126,7 @@
       <h2>Raw error log</h2>
       <table id="raw-table"><thead><tr>
         <th>#</th><th>Service</th><th>Target</th><th>Horizon</th><th>Actuals</th>
-        <th>High err</th><th>Low err</th><th>Precip err</th><th>Cond?</th>
+        <th>High err</th><th>Low err</th><th>Precip err</th><th>Wind err</th><th>Cond?</th>
       </tr></thead><tbody></tbody></table>
     </section>
 

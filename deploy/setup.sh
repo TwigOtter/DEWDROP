@@ -51,7 +51,7 @@ sudo -u "$SVC_USER" "$TARGET/venv/bin/python" "$TARGET/scripts/init_db.py"
 cp "$TARGET"/deploy/dewdrop-*.service "$TARGET"/deploy/dewdrop-*.timer /etc/systemd/system/
 systemctl daemon-reload
 systemctl enable --now dewdrop-poll.timer dewdrop-actuals.timer dewdrop-score.timer
-systemctl enable --now dewdrop-aggregate.timer
+systemctl enable --now dewdrop-aggregate.timer dewdrop-backup.timer
 systemctl enable --now dewdrop-api.service
 
 # Station poller only makes sense if GW2000_HOST is set.

@@ -23,6 +23,8 @@ BASE_URL = "https://mesonet.agron.iastate.edu/api/1/daily.json"
 
 # ASOS precip is reported in inches; we store mm.
 _IN_TO_MM = 25.4
+# IEM wind speeds are in knots; we store mph.
+_KT_TO_MPH = 1.15078
 
 
 def _first(d: dict, *keys: str) -> float | None:
@@ -41,8 +43,7 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
     params = {
         "network": config.ASOS_NETWORK,
         "station": config.ASOS_STATION,
-        "sdate": target_date.isoformat(),
-        "edate": target_date.isoformat(),
+        "date": target_date.isoformat(),
     }
     resp = await client.get(BASE_URL, params=params, timeout=30)
     resp.raise_for_status()
@@ -51,11 +52,19 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
     if not rows:
         return []
 
-    rec = rows[0]
+    # IEM silently ignores unknown date params and dumps the station's full
+    # history (oldest first), so never trust rows[0] blindly — match the date.
+    iso = target_date.isoformat()
+    rec = next((r for r in rows if r.get("date") == iso), None)
+    if rec is None:
+        return []
     high = _first(rec, "max_tmpf", "high", "max_temp_f")
     low = _first(rec, "min_tmpf", "low", "min_temp_f")
     precip_in = _first(rec, "precip", "pday", "precip_in")
     precip_mm = precip_in * _IN_TO_MM if precip_in is not None else None
+    # Max *sustained* wind (not gust), reported in knots.
+    wind_kt = _first(rec, "max_wind_speed_kts", "max_sknt")
+    wind_mph = wind_kt * _KT_TO_MPH if wind_kt is not None else None
 
     return [
         ActualDay(
@@ -64,6 +73,7 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
             temp_high_f=high,
             temp_low_f=low,
             precip_mm=precip_mm,
+            wind_max_mph=wind_mph,
             condition=None,  # daily summary carries no single condition label
             fetched_at=datetime.now(timezone.utc),
         )

@@ -3,7 +3,7 @@ Description=Fetch yesterday's actuals nightly (design doc §4 Phase 2)
 
 [Timer]
 # After midnight, once the previous day is complete at all sources.
-OnCalendar=*-*-* 00:45:00
+OnCalendar=*-*-* 00:45:00 America/Chicago
 RandomizedDelaySec=300
 Persistent=true
 

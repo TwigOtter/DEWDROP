@@ -24,9 +24,10 @@ from ..models import ActualDay
 SOURCE = "ecowitt_local"
 BASE_URL = "https://api.ecowitt.net/api/v3/device/history"
 
-# Ecowitt unit ids: temperature 2 = °F; rainfall 13 = mm.
+# Ecowitt unit ids: temperature 2 = °F; rainfall 13 = mm; wind 9 = mph.
 _TEMP_UNIT_F = 2
 _RAIN_UNIT_MM = 13
+_WIND_UNIT_MPH = 9
 
 
 def _series_values(group: dict, *path: str) -> list[float]:
@@ -58,10 +59,11 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
         "mac": config.ECOWITT_MAC,
         "start_date": start.strftime("%Y-%m-%d %H:%M:%S"),
         "end_date": end.strftime("%Y-%m-%d %H:%M:%S"),
-        "call_back": "outdoor,rainfall",
+        "call_back": "outdoor,rainfall,wind",
         "cycle_type": "auto",
         "temp_unitid": _TEMP_UNIT_F,
         "rainfall_unitid": _RAIN_UNIT_MM,
+        "wind_speed_unitid": _WIND_UNIT_MPH,
     }
     resp = await client.get(BASE_URL, params=params, timeout=30)
     resp.raise_for_status()
@@ -70,6 +72,7 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
     temps = _series_values(data, "outdoor", "temperature")
     # Daily rainfall is cumulative through the day; its max is the day's total.
     rain = _series_values(data, "rainfall", "daily")
+    winds = _series_values(data, "wind", "wind_speed")
 
     if not temps and not rain:
         return []
@@ -81,6 +84,7 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
             temp_high_f=max(temps) if temps else None,
             temp_low_f=min(temps) if temps else None,
             precip_mm=max(rain) if rain else None,
+            wind_max_mph=max(winds) if winds else None,
             condition=None,
             fetched_at=datetime.now(timezone.utc),
         )

@@ -26,7 +26,7 @@ read-only HTTP API can also be queried by **Berries** later.
               nightly, for yesterday                                       ▼
                                           blend.blender ──> bias-corrected ensemble
                                                                            │
-                          web UI + Berries  <── dewdrop.api (port 8003) ───┘
+                          web UI + Berries  <── dewdrop.api (port 8004) ───┘
 ```
 
 ## Data model (3 wide, daily tables)
@@ -75,11 +75,11 @@ python scripts/init_db.py
 python scripts/poll_forecasts.py        # keyless open_meteo + nws by default
 python scripts/ingest_actuals.py        # yesterday's ASOS/MCI actuals
 python scripts/run_scoring.py
-uvicorn dewdrop.api.main:app --port 8003   # open http://localhost:8003/
+uvicorn dewdrop.api.main:app --port 8004   # open http://localhost:8004/
 pytest -q
 ```
 
-## Web UI / API (port 8003)
+## Web UI / API (port 8004)
 
 `/` serves the dashboard. JSON endpoints (also Berries-queryable):
 

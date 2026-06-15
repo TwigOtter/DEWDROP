@@ -22,12 +22,24 @@ REGISTRY: dict[str, ActualsFetcher] = {
     ecowitt.SOURCE: ecowitt.fetch,
 }
 
+# Sources written into `actuals` by *other* paths (not by ingest_actuals).
+# Listed here so ``DEWDROP_ENABLED_ACTUALS`` can include them for the scorer
+# and microclimate offset without ingest_actuals trying to fetch them.
+LOCAL_SOURCES: frozenset[str] = frozenset({"gw2000_local"})
+
 
 def get_enabled(names: list[str]) -> list[tuple[str, ActualsFetcher]]:
+    """Resolve enabled fetcher sources. ``LOCAL_SOURCES`` are silently
+    skipped (they're produced by other scripts); unknown names still raise."""
     out: list[tuple[str, ActualsFetcher]] = []
     for n in names:
+        if n in LOCAL_SOURCES:
+            continue
         fn = REGISTRY.get(n)
         if fn is None:
-            raise KeyError(f"Unknown actuals source '{n}'. Known: {sorted(REGISTRY)}")
+            raise KeyError(
+                f"Unknown actuals source '{n}'. "
+                f"Known fetchers: {sorted(REGISTRY)}; local-only: {sorted(LOCAL_SOURCES)}"
+            )
         out.append((n, fn))
     return out

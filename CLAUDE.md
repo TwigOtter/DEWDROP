@@ -21,12 +21,16 @@ integration is not central; just don't break the HTTP query surface.
 Three SQLite tables, one row per day per source:
 
 - **`forecasts`** — `(service, fetched_on, target_date)` unique; carries
-  `horizon_days`, `temp_high_f`, `temp_low_f`, `precip_mm`, normalised
-  `condition`, and `raw_json`. INSERT OR IGNORE = idempotent nightly snapshot.
+  `horizon_days`, `temp_high_f`, `temp_low_f`, `precip_mm`, `wind_max_mph`
+  (max sustained wind), normalised `condition`, and `raw_json`. INSERT OR
+  IGNORE = idempotent nightly snapshot.
 - **`actuals`** — `(date, source)` unique; same metric columns. Multiple
   sources per date (`asos_mci` primary, `ecowitt_local` secondary).
 - **`forecast_errors`** — one row per `(forecast_id, actuals_source)`; **signed**
-  errors (predicted − actual, + = ran hot) + `condition_match`.
+  errors (predicted − actual, + = ran hot) + `condition_match`. Written **only**
+  against the primary ground truth (`ENABLED_ACTUALS[0]` = `asos_mci`) and only
+  for `horizon_days >= 0` — secondary actuals feed the microclimate offset,
+  never the bias history.
 
 ## Architecture
 
@@ -58,7 +62,7 @@ python scripts/init_db.py
 python scripts/poll_forecasts.py          # snapshot forecasts (today..+10)
 python scripts/ingest_actuals.py [DATE]   # fetch actuals (default: yesterday)
 python scripts/run_scoring.py             # score forecasts that now have actuals
-uvicorn dewdrop.api.main:app --port 8003  # API + web UI at /
+uvicorn dewdrop.api.main:app --port 8004  # API + web UI at /
 ```
 
 Production: `deploy/setup.sh` installs to `/opt/dewdrop` and enables the timers
@@ -75,3 +79,17 @@ Production: `deploy/setup.sh` installs to `/opt/dewdrop` and enables the timers
   the time series), not the local live endpoint; skipped unless cloud creds set.
 - **ASOS** endpoint/field names from IEM can drift — `actuals/asos.py` parses
   defensively. The ensemble needs ~90 days of history (§5) to be meaningful.
+- **Schema changes**: added columns go in `db.SCHEMA` *and* `db._MIGRATIONS`
+  (ALTER TABLE backfill); re-running `scripts/init_db.py` upgrades a live DB
+  in place.
+- **Ensemble guards** (§5.1): bias is only subtracted once a (service, horizon)
+  has `MIN_BIAS_SAMPLES` (default 3) scored days; non-negative metrics
+  (precip, wind) are clamped at 0 after correction; error samples are
+  winsorized (5th–95th pct, n ≥ 10) before bias/variance are learned.
+- **Precip is also scored categorically** (`precip_hit`, rain/no-rain at
+  `RAIN_THRESHOLD_MM`), which powers the ensemble's `rain_chance_pct`.
+- **ASOS condition labels are derived** at scoring time (`actuals/derive.py`)
+  from precip + the station's peak solar, and written back to the actuals row.
+- `/health` reports per-feed staleness; the UI shows a banner when degraded.
+- **Backups**: `dewdrop-backup.timer` runs `scripts/backup_db.py` nightly
+  (online `.backup` + retention, `DEWDROP_BACKUP_KEEP`).

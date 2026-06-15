@@ -48,6 +48,7 @@ CREATE TABLE forecasts (
     temp_high_f   REAL,                     -- predicted high (°F)
     temp_low_f    REAL,                     -- predicted low (°F)
     precip_mm     REAL,                     -- predicted precipitation amount (mm)
+    wind_max_mph  REAL,                     -- predicted max sustained wind (mph)
     condition     TEXT,                     -- normalised condition label (see §6)
     raw_json      TEXT,                     -- full API response blob for re-processing
     UNIQUE (service, fetched_on, target_date)
@@ -66,6 +67,7 @@ CREATE TABLE actuals (
     temp_high_f  REAL,
     temp_low_f   REAL,
     precip_mm    REAL,
+    wind_max_mph REAL,                      -- observed max sustained wind (mph)
     condition    TEXT,
     fetched_at   DATETIME NOT NULL
 );
@@ -86,11 +88,14 @@ CREATE TABLE forecast_errors (
     temp_high_err  REAL,                    -- predicted − actual (positive = ran hot)
     temp_low_err   REAL,                    -- predicted − actual (positive = ran hot)
     precip_err     REAL,                    -- predicted − actual (positive = over-forecast)
+    wind_err       REAL,                    -- predicted − actual (positive = over-forecast)
     condition_match INTEGER                 -- 1 if condition matched, 0 if not
 );
 ```
 
 > Errors are **signed**: positive = over-predicted, negative = under-predicted. This is what enables bias detection rather than just accuracy measurement.
+
+> Scoring is anchored on a **single ground-truth source** (`asos_mci`). Other actuals rows (e.g. the local station) are kept for the microclimate comparison but are not scored against, so they can't dilute the bias/variance history.
 
 ---
 
@@ -109,10 +114,11 @@ The main script runs in two phases. Both are idempotent — re-running on the sa
 ### Phase 2 — Scoring
 
 1. Fetch actuals for yesterday from both ASOS MCI and Ecowitt GW2000. Insert into `actuals` if not already present.
-2. Query all `forecasts` rows where `target_date = yesterday` AND no `forecast_errors` row exists yet.
-3. For each forecast row, compute signed errors vs. the actuals row.
-4. Insert the error records into `forecast_errors`.
-5. Optionally materialise an aggregated bias view (mean error + std dev per service per horizon).
+2. Ground-truth rows with no condition label (ASOS daily summaries never carry one) get a coarse label **derived** from observed precip (rain / heavy_rain / snow by temperature) and — on dry days — the local station's peak solar reading vs. a rough clear-sky maximum (clear / partly_cloudy / cloudy). The derivation is written back to the actuals row.
+3. Query all `forecasts` rows where `target_date = yesterday` AND no `forecast_errors` row exists yet (ground-truth source only, `horizon_days >= 0` only).
+4. For each forecast row, compute signed errors vs. the actuals row, plus `precip_hit` — the **categorical** rain/no-rain call at the `RAIN_THRESHOLD_MM` cutoff (default 0.25 mm). Daily mm error is dominated by a few storm days; the hit rate is the better trust signal.
+5. Insert the error records into `forecast_errors`.
+6. Optionally materialise an aggregated bias view (mean error + std dev per service per horizon).
 
 ---
 
@@ -130,6 +136,24 @@ bias(service, horizon)     = AVG(temp_high_err)
 
 corrected_forecast         = raw_forecast − bias(service, horizon)
 ```
+
+Three guards keep the correction physical and robust:
+
+- The bias is only subtracted once a `(service, horizon)` has at least
+  `MIN_BIAS_SAMPLES` scored days (default 3) — a bias estimated from one or
+  two days is mostly noise.
+- Non-negative quantities (precip, wind) are clamped at 0 after correction;
+  a correction past zero just means "none".
+- Error samples are **winsorized** (clipped to the 5th–95th percentile, once
+  a `(service, horizon)` has ≥10 samples) before the bias/variance are
+  computed, so one busted reading can't poison a curve for months.
+
+The ensemble also reports a **chance of rain**: each service with a precip
+number votes rain/no-rain at the threshold, weighted by its historical
+rain/no-rain hit rate at that horizon (unproven services count as a coin
+flip), and a **history_days** count — the weakest contributing service's
+scored-day count — so the UI can show how much history backs each day's
+correction.
 
 ### 5.2 Weighted Aggregation
 

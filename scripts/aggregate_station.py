@@ -6,7 +6,6 @@ Also accepts an explicit date argument for backfilling: python aggregate_station
 """
 import sys
 from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
 from dewdrop import config
 from dewdrop.db import connect, insert_actuals
@@ -14,7 +13,7 @@ from dewdrop.models import ActualDay
 
 
 def aggregate(target_date: date) -> None:
-    tz = ZoneInfo(config.TIMEZONE)
+    tz = config.tz()
     # Convert local-date boundaries to UTC for the station_readings ts column.
     local_midnight = datetime(target_date.year, target_date.month, target_date.day,
                               tzinfo=tz)
@@ -31,6 +30,7 @@ def aggregate(target_date: date) -> None:
                    MIN(humidity_out)  AS humidity_low,
                    AVG(humidity_out)  AS humidity_avg,
                    MAX(wind_gust_mph) AS wind_max_mph,
+                   MAX(wind_speed_mph) AS wind_sustained_max_mph,
                    AVG(wind_speed_mph) AS wind_avg_mph,
                    MAX(precip_daily_mm) AS precip_total_mm,
                    MAX(uv_index)      AS uv_max,
@@ -73,6 +73,8 @@ def aggregate(target_date: date) -> None:
                 temp_high_f=row["temp_high_f"],
                 temp_low_f=row["temp_low_f"],
                 precip_mm=row["precip_total_mm"],
+                # Sustained max (not gust), to match the forecast wind metric.
+                wind_max_mph=row["wind_sustained_max_mph"],
                 condition=None,
                 fetched_at=datetime.now(timezone.utc),
             )
@@ -88,6 +90,5 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         target = date.fromisoformat(sys.argv[1])
     else:
-        tz = ZoneInfo(config.TIMEZONE)
-        target = (datetime.now(tz) - timedelta(days=1)).date()
+        target = config.local_today() - timedelta(days=1)
     aggregate(target)

@@ -2,10 +2,11 @@
 from __future__ import annotations
 
 import abc
-from datetime import datetime, timezone
+from datetime import date
 
 import httpx
 
+from .. import config
 from ..models import ForecastDay
 
 
@@ -35,5 +36,9 @@ class ForecastSource(abc.ABC):
         ...
 
     @staticmethod
-    def _today_utc() -> "datetime.date":
-        return datetime.now(timezone.utc).date()
+    def _today_local() -> date:
+        """Snapshot date: the local calendar day. Sources fetch local-day
+        forecasts (e.g. open_meteo with ``timezone=TIMEZONE``), so fetched_on —
+        and thus horizon_days = target_date - fetched_on — must be local too,
+        or horizons go off by one after 00:00 UTC."""
+        return config.local_today()

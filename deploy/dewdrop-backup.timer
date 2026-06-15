@@ -1,0 +1,10 @@
+[Unit]
+Description=Run DEWDROP SQLite backup nightly
+
+[Timer]
+# Nightly at 03:45 local time (after scoring at 03:15); catch up if off.
+OnCalendar=*-*-* 03:45:00 America/Chicago
+Persistent=true
+
+[Install]
+WantedBy=timers.target

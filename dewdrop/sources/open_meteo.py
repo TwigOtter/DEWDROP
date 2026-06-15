@@ -21,6 +21,7 @@ _DAILY_VARS = (
     "temperature_2m_max",
     "temperature_2m_min",
     "precipitation_sum",
+    "wind_speed_10m_max",
     "weathercode",
 )
 
@@ -39,6 +40,7 @@ class OpenMeteoSource(ForecastSource):
             "daily": ",".join(_DAILY_VARS),
             "temperature_unit": "fahrenheit",
             "precipitation_unit": "mm",
+            "wind_speed_unit": "mph",
             "timezone": config.TIMEZONE,
             "forecast_days": horizon_days + 1,   # today (h0) .. today+horizon
         }
@@ -51,8 +53,9 @@ class OpenMeteoSource(ForecastSource):
         highs = daily.get("temperature_2m_max", [])
         lows = daily.get("temperature_2m_min", [])
         precip = daily.get("precipitation_sum", [])
+        winds = daily.get("wind_speed_10m_max", [])
         codes = daily.get("weathercode", [])
-        fetched_on = self._today_utc()
+        fetched_on = self._today_local()
 
         out: list[ForecastDay] = []
         for i, d in enumerate(dates):
@@ -65,6 +68,7 @@ class OpenMeteoSource(ForecastSource):
                     temp_high_f=highs[i] if i < len(highs) else None,
                     temp_low_f=lows[i] if i < len(lows) else None,
                     precip_mm=precip[i] if i < len(precip) else None,
+                    wind_max_mph=winds[i] if i < len(winds) else None,
                     condition=normalise.from_wmo_code(code),
                     raw={var: daily.get(var, [None] * len(dates))[i] for var in _DAILY_VARS},
                 )

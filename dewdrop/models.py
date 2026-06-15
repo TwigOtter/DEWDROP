@@ -37,6 +37,7 @@ class ForecastDay:
     temp_high_f: float | None = None
     temp_low_f: float | None = None
     precip_mm: float | None = None
+    wind_max_mph: float | None = None   # max sustained wind for the day
     condition: str | None = None
     raw: Any = None           # provider's per-day blob, stored for re-parsing
 
@@ -63,6 +64,7 @@ class ActualDay:
     temp_high_f: float | None = None
     temp_low_f: float | None = None
     precip_mm: float | None = None
+    wind_max_mph: float | None = None   # max sustained wind for the day
     condition: str | None = None
     fetched_at: datetime = field(
         default_factory=lambda: datetime.now(timezone.utc))

@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+from datetime import date, datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -28,6 +30,20 @@ TIMEZONE = _get("DEWDROP_TIMEZONE", "America/Chicago")
 
 # How many days out to snapshot, today (horizon 0) through +HORIZON_DAYS.
 HORIZON_DAYS = int(_get("DEWDROP_HORIZON_DAYS", "10"))
+
+# Minimum scored days per (service, horizon) before the ensemble trusts the
+# learned bias enough to subtract it. Below this, forecasts are blended
+# uncorrected — a bias estimated from 1-2 days is mostly noise.
+MIN_BIAS_SAMPLES = int(_get("DEWDROP_MIN_BIAS_SAMPLES", "3"))
+
+# A day counts as "rain" at/above this much precip (mm). 0.25 mm ≈ the 0.01 in
+# trace threshold ASOS reports at. Drives categorical precip scoring
+# (rain/no-rain hits) and the ensemble's chance-of-rain vote.
+RAIN_THRESHOLD_MM = float(_get("DEWDROP_RAIN_THRESHOLD_MM", "0.25"))
+
+# ── Nightly DB backup (scripts/backup_db.py, dewdrop-backup.timer) ────────
+BACKUP_DIR = Path(_get("DEWDROP_BACKUP_DIR", str(ROOT / "data" / "backups")))
+BACKUP_KEEP = int(_get("DEWDROP_BACKUP_KEEP", "14"))  # newest N kept
 
 # ── Actuals: NOAA ASOS / Iowa State Mesonet (primary ground truth) ───────
 ASOS_STATION = _get("DEWDROP_ASOS_STATION", "MCI")
@@ -63,4 +79,24 @@ ENABLED_SOURCES = [
 
 # ── Read-only HTTP API (web UI + Berries) ────────────────────────────────
 API_HOST = _get("DEWDROP_API_HOST", "127.0.0.1")
-API_PORT = int(_get("DEWDROP_API_PORT", "8003"))
+API_PORT = int(_get("DEWDROP_API_PORT", "8004"))
+
+
+# ── Local time ───────────────────────────────────────────────────────────
+# The server runs in UTC, but all weather is reasoned about in the location's
+# local calendar day (TIMEZONE). Anything that asks "what day is it" — forecast
+# snapshot dates, horizons, "yesterday" for actuals, day-window cutoffs — MUST
+# go through these so it doesn't roll over at 00:00 UTC (e.g. 7pm CDT). Pure
+# *timestamps* (an instant in time) should stay UTC; these are for calendar days.
+def tz() -> ZoneInfo:
+    return ZoneInfo(TIMEZONE)
+
+
+def local_now() -> datetime:
+    """Timezone-aware 'now' in the configured local timezone."""
+    return datetime.now(ZoneInfo(TIMEZONE))
+
+
+def local_today() -> date:
+    """Today's date on the local calendar (not the server's UTC date)."""
+    return local_now().date()

@@ -4,13 +4,12 @@ Serves JSON for the five design-doc §7 views, station live/history endpoints,
 and the single-page Chart.js front end from ``dewdrop/web/static``. The same
 JSON endpoints are what Berries can query later over HTTP.
 
-Run:  uvicorn dewdrop.api.main:app --host 0.0.0.0 --port 8003
+Run:  uvicorn dewdrop.api.main:app --host 0.0.0.0 --port 8004
 """
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import FastAPI, Query
@@ -18,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .. import config
-from ..blend import ensemble_forecast, service_bias_curves
+from ..blend import compute_offset, ensemble_forecast, service_bias_curves
 from ..db import connect
 from ..station.reader import parse as parse_station
 
@@ -28,13 +27,62 @@ _STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
 
 
 def _local_today() -> str:
-    return datetime.now(ZoneInfo(config.TIMEZONE)).date().isoformat()
+    return config.local_today().isoformat()
+
+
+# Staleness thresholds for /health: forecast snapshots land nightly, actuals
+# ingest runs a day behind, the station poller every minute.
+_STALE_FORECAST_DAYS = 2
+_STALE_ACTUALS_DAYS = 3
+_STALE_STATION_HOURS = 3.0
 
 
 @app.get("/health")
 def health() -> dict:
-    return {"status": "ok", "location": config.LOCATION_NAME,
-            "actuals": config.ENABLED_ACTUALS, "sources": config.ENABLED_SOURCES}
+    today = config.local_today()
+    with connect() as conn:
+        f_rows = conn.execute(
+            "SELECT service, MAX(fetched_on) AS last FROM forecasts GROUP BY service"
+        ).fetchall()
+        a_rows = conn.execute(
+            "SELECT source, MAX(date) AS last FROM actuals GROUP BY source"
+        ).fetchall()
+        s_row = conn.execute(
+            "SELECT MAX(ts) AS last FROM station_readings"
+        ).fetchone()
+    f_last = {r["service"]: r["last"] for r in f_rows}
+    a_last = {r["source"]: r["last"] for r in a_rows}
+
+    def _feed(name: str, last: str | None, max_age_days: int) -> dict:
+        age = (today - date.fromisoformat(last)).days if last else None
+        return {"name": name, "last": last, "age_days": age,
+                "stale": age is None or age > max_age_days}
+
+    forecasts = [_feed(s, f_last.get(s), _STALE_FORECAST_DAYS)
+                 for s in config.ENABLED_SOURCES]
+    actuals = [_feed(s, a_last.get(s), _STALE_ACTUALS_DAYS)
+               for s in config.ENABLED_ACTUALS]
+
+    station = None
+    if config.GW2000_HOST:
+        last_ts = s_row["last"] if s_row else None
+        age_h = None
+        if last_ts:
+            ts = datetime.fromisoformat(last_ts)
+            if ts.tzinfo is None:
+                ts = ts.replace(tzinfo=timezone.utc)
+            age_h = (datetime.now(timezone.utc) - ts).total_seconds() / 3600.0
+        station = {"last": last_ts,
+                   "age_hours": round(age_h, 1) if age_h is not None else None,
+                   "stale": age_h is None or age_h > _STALE_STATION_HOURS}
+
+    degraded = (any(f["stale"] for f in forecasts + actuals)
+                or (station is not None and station["stale"]))
+    return {"status": "degraded" if degraded else "ok",
+            "location": config.LOCATION_NAME,
+            "actuals": config.ENABLED_ACTUALS, "sources": config.ENABLED_SOURCES,
+            "staleness": {"forecasts": forecasts, "actuals": actuals,
+                          "station": station}}
 
 
 # ── Station: live proxy + history ────────────────────────────────────────────
@@ -70,14 +118,15 @@ def api_station_live() -> dict:
 def api_station_today() -> dict:
     """All stored readings for today (used for intraday charts)."""
     today = _local_today()
-    tz = ZoneInfo(config.TIMEZONE)
+    tz = config.tz()
     local_midnight = datetime.fromisoformat(today).replace(tzinfo=tz)
     utc_lo = local_midnight.astimezone(timezone.utc).isoformat()
     utc_hi = (local_midnight + timedelta(days=1)).astimezone(timezone.utc).isoformat()
     with connect() as conn:
         rows = conn.execute(
-            """SELECT ts, temp_out_f, humidity_out, wind_speed_mph, wind_gust_mph,
-                      wind_dir_deg, precip_daily_mm, uv_index, solar_rad_wm2
+            """SELECT ts, temp_out_f, humidity_out, pressure_inhg,
+                      wind_speed_mph, wind_gust_mph, wind_dir_deg,
+                      precip_daily_mm, uv_index, solar_rad_wm2
                FROM station_readings
                WHERE ts >= ? AND ts < ?
                ORDER BY ts""",
@@ -124,6 +173,13 @@ def forecast(source: str | None = None) -> dict:
     return api_ensemble(source)
 
 
+# ── Microclimate offset: backyard (GW2000) vs regional canonical (MCI) ───────
+@app.get("/api/microclimate")
+def api_microclimate(days: int = 30) -> dict:
+    with connect() as conn:
+        return compute_offset(conn, window_days=days)
+
+
 # ── Service comparison table ──────────────────────────────────────────────────
 @app.get("/api/services")
 def api_services(
@@ -148,6 +204,8 @@ def api_services(
                    AVG(ABS(temp_high_err)) AS mae_high,
                    AVG(ABS(temp_low_err))  AS mae_low,
                    AVG(ABS(precip_err))    AS mae_precip,
+                   AVG(precip_hit) * 100.0 AS precip_hit_pct,
+                   AVG(ABS(wind_err))      AS mae_wind,
                    AVG(condition_match) * 100.0 AS condition_pct,
                    COUNT(*) AS n
             FROM forecast_errors
@@ -166,6 +224,8 @@ def api_services(
             "services": [
                 {"service": r["service"], "mae_high": _r(r["mae_high"]),
                  "mae_low": _r(r["mae_low"]), "mae_precip": _r(r["mae_precip"]),
+                 "precip_hit_pct": _r(r["precip_hit_pct"], 1),
+                 "mae_wind": _r(r["mae_wind"]),
                  "condition_pct": _r(r["condition_pct"], 1), "n": r["n"]}
                 for r in rows
             ]}
@@ -174,7 +234,7 @@ def api_services(
 # ── Bias curves (per service, mean signed error by horizon) ──────────────────
 @app.get("/api/bias-curves")
 def api_bias_curves(metric: str = "temp_high_err", source: str | None = None) -> dict:
-    allowed = {"temp_high_err", "temp_low_err", "precip_err"}
+    allowed = {"temp_high_err", "temp_low_err", "precip_err", "wind_err"}
     if metric not in allowed:
         metric = "temp_high_err"
     with connect() as conn:
@@ -189,7 +249,7 @@ def api_daily(target_date: str) -> dict:
         forecasts = conn.execute(
             """
             SELECT service, horizon_days, fetched_on,
-                   temp_high_f, temp_low_f, precip_mm, condition
+                   temp_high_f, temp_low_f, precip_mm, wind_max_mph, condition
             FROM forecasts WHERE target_date = ?
             ORDER BY service, horizon_days DESC
             """,
@@ -197,7 +257,8 @@ def api_daily(target_date: str) -> dict:
         ).fetchall()
         actuals = conn.execute(
             """
-            SELECT source, temp_high_f, temp_low_f, precip_mm, condition
+            SELECT source, temp_high_f, temp_low_f, precip_mm, wind_max_mph,
+                   condition
             FROM actuals WHERE date = ?
             """,
             (target_date,),
@@ -214,7 +275,8 @@ def api_errors(limit: int = 200) -> dict:
         rows = conn.execute(
             """
             SELECT id, service, target_date, horizon_days, actuals_source,
-                   temp_high_err, temp_low_err, precip_err, condition_match
+                   temp_high_err, temp_low_err, precip_err, wind_err,
+                   condition_match
             FROM forecast_errors
             ORDER BY id DESC LIMIT ?
             """,
