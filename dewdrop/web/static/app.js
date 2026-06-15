@@ -3,6 +3,7 @@
 const api = (path) => fetch(path).then((r) => r.json());
 const $ = (sel) => document.querySelector(sel);
 const fmt = (v, suffix = "") => (v === null || v === undefined ? "—" : v + suffix);
+const mmToIn = (mm) => mm === null || mm === undefined ? null : Math.round(mm / 25.4 * 100) / 100;
 
 const PALETTE = ["#4fc3f7", "#ff7043", "#66bb6a", "#ab47bc", "#ffca28", "#26a69a"];
 
@@ -78,7 +79,7 @@ function renderStationCards(live) {
      </div>`,
     `<div class="sc">
        <div class="sc-label">Daily Precip</div>
-       <div class="sc-val">${fmt(live.precip_daily_mm, " mm")}</div>
+       <div class="sc-val">${fmt(mmToIn(live.precip_daily_mm), " in")}</div>
      </div>`,
     `<div class="sc">
        <div class="sc-label">UV Index</div>
@@ -155,7 +156,7 @@ function renderStationCharts(readings) {
   ]);
 
   _makeChart("chart-precip",
-    [line(readings.map((r) => r.precip_daily_mm), "#ab47bc", "Precip (mm)")]);
+    [line(readings.map((r) => mmToIn(r.precip_daily_mm)), "#ab47bc", "Precip (in)")]);
 }
 
 async function refreshStation() {
@@ -196,7 +197,7 @@ loaders.dashboard = async () => {
       <div class="date">+${d.horizon_days}d · ${d.target_date}</div>
       <div class="hi">${fmt(d.temp_high_f, "°")}${d.temp_high_f_sd != null ? `<span class="band"> ±${d.temp_high_f_sd}</span>` : ""}</div>
       <div class="lo">${fmt(d.temp_low_f, "°")}${d.temp_low_f_sd != null ? `<span class="band"> ±${d.temp_low_f_sd}</span>` : ""}</div>
-      <div class="band">precip ${fmt(d.precip_mm, " mm")}</div>
+      <div class="band">precip ${fmt(mmToIn(d.precip_mm), " in")}</div>
       <div class="cond">${d.condition || "—"}</div>
       <div class="band">${d.n_services} services</div>
     </div>`).join("");
@@ -213,7 +214,7 @@ loaders.services = async () => {
   tb.innerHTML = data.services.length
     ? data.services.map((s) => `<tr>
         <td>${s.service}</td><td>${fmt(s.mae_high)}</td><td>${fmt(s.mae_low)}</td>
-        <td>${fmt(s.mae_precip)}</td><td>${fmt(s.condition_pct, "%")}</td><td>${s.n}</td></tr>`).join("")
+        <td>${mmToIn(s.mae_precip) !== null ? `${mmToIn(s.mae_precip)} in` : "—"}</td><td>${fmt(s.condition_pct, "%")}</td><td>${s.n}</td></tr>`).join("")
     : '<tr><td colspan="6" class="empty">No scored forecasts yet.</td></tr>';
 };
 $("#svc-apply").addEventListener("click", () => loaders.services());
@@ -259,13 +260,13 @@ async function loadDaily() {
   const data = await api(`/api/daily/${date}`);
   $("#daily-actuals").innerHTML = data.actuals.length
     ? "<strong>Actuals:</strong> " + data.actuals.map((a) =>
-        `${a.source}: ${fmt(a.temp_high_f, "°")}/${fmt(a.temp_low_f, "°")}, ${fmt(a.precip_mm, "mm")}, ${a.condition || "—"}`).join(" · ")
+        `${a.source}: ${fmt(a.temp_high_f, "°")}/${fmt(a.temp_low_f, "°")}, ${fmt(mmToIn(a.precip_mm), " in")}, ${a.condition || "—"}`).join(" · ")
     : "<span class='empty'>No actuals recorded for this date.</span>";
   const tb = $("#daily-table tbody");
   tb.innerHTML = data.forecasts.length
     ? data.forecasts.map((f) => `<tr>
         <td>${f.service}</td><td>+${f.horizon_days}d</td><td>${fmt(f.temp_high_f, "°")}</td>
-        <td>${fmt(f.temp_low_f, "°")}</td><td>${fmt(f.precip_mm, "mm")}</td><td>${f.condition || "—"}</td></tr>`).join("")
+        <td>${fmt(f.temp_low_f, "°")}</td><td>${fmt(mmToIn(f.precip_mm), " in")}</td><td>${f.condition || "—"}</td></tr>`).join("")
     : '<tr><td colspan="6" class="empty">No forecasts for this date.</td></tr>';
 }
 $("#daily-load").addEventListener("click", loadDaily);
@@ -282,7 +283,7 @@ loaders.raw = async () => {
     ? data.errors.map((e) => `<tr>
         <td>${e.id}</td><td>${e.service}</td><td>${e.target_date}</td><td>+${e.horizon_days}d</td>
         <td>${e.actuals_source}</td><td>${fmt(e.temp_high_err)}</td><td>${fmt(e.temp_low_err)}</td>
-        <td>${fmt(e.precip_err)}</td><td>${e.condition_match === null ? "—" : (e.condition_match ? "✓" : "✗")}</td></tr>`).join("")
+        <td>${fmt(mmToIn(e.precip_err), "in")}</td><td>${e.condition_match === null ? "—" : (e.condition_match ? "✓" : "✗")}</td></tr>`).join("")
     : '<tr><td colspan="9" class="empty">No error rows yet.</td></tr>';
 };
 
