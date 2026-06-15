@@ -91,7 +91,11 @@ def _learn_rain_hits(
 
 
 def _latest_forecasts(conn: sqlite3.Connection, today: date) -> list[sqlite3.Row]:
-    """Most recent snapshot per (service, target_date) for today and beyond."""
+    """Most recent snapshot per (service, target_date) for today and beyond.
+
+    Excludes 'dewdrop' rows — those are our own ensemble snapshots stored for
+    scoring and must not feed back into the ensemble calculation.
+    """
     return conn.execute(
         """
         SELECT f.service, f.target_date, f.horizon_days,
@@ -101,7 +105,7 @@ def _latest_forecasts(conn: sqlite3.Connection, today: date) -> list[sqlite3.Row
         JOIN (
             SELECT service, target_date, MAX(fetched_on) AS latest
             FROM forecasts
-            WHERE target_date >= ?
+            WHERE target_date >= ? AND service != 'dewdrop'
             GROUP BY service, target_date
         ) m
           ON m.service = f.service

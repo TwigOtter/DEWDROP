@@ -1,0 +1,10 @@
+[Unit]
+Description=Snapshot DEWDROP ensemble forecast nightly (after scoring at 00:45)
+
+[Timer]
+# Nightly at 00:50 local time (after scoring at 00:45); catch up if off.
+OnCalendar=*-*-* 00:50:00 America/Chicago
+Persistent=true
+
+[Install]
+WantedBy=timers.target
