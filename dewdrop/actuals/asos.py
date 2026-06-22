@@ -62,8 +62,11 @@ async def fetch(client: httpx.AsyncClient, target_date: date) -> list[ActualDay]
     low = _first(rec, "min_tmpf", "low", "min_temp_f")
     precip_in = _first(rec, "precip", "pday", "precip_in")
     precip_mm = precip_in * _IN_TO_MM if precip_in is not None else None
-    # Max *sustained* wind (not gust), reported in knots.
-    wind_kt = _first(rec, "max_wind_speed_kts", "max_sknt")
+    # IEM daily summary exposes max gust (not max sustained wind), in knots.
+    # "max_gust" is the only daily-max wind field available; forecast sources
+    # (open_meteo) provide max sustained wind, so a small systematic bias is
+    # expected — the bias-correction layer will learn and remove it.
+    wind_kt = _first(rec, "max_gust", "avg_sknt")
     wind_mph = wind_kt * _KT_TO_MPH if wind_kt is not None else None
 
     return [
