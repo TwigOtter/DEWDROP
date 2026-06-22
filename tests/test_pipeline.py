@@ -253,6 +253,39 @@ def test_rain_chance_weights_by_hit_rate(tmp_path):
     assert day["rain_chance_pct"] == 100
 
 
+def test_single_service_band_nonzero_with_history(tmp_path):
+    """Single-service forecasts must not show ±0 when error history has scatter."""
+    db = tmp_path / "t.sqlite3"
+    init_db(db)
+    # Three scored days: errors are -1, -3, +1 → bias=-1, residual variance > 0.
+    with connect(db) as conn:
+        for n, forecast_high in enumerate([70.0, 68.0, 72.0]):  # actuals all 71
+            fetched = date(2026, 6, 1 + n)
+            target = date(2026, 6, 2 + n)
+            insert_forecasts(conn, [
+                ForecastDay("open_meteo", fetched, target, temp_high_f=forecast_high),
+            ])
+            insert_actuals(conn, [
+                ActualDay(target, "asos_mci", temp_high_f=71.0),
+            ])
+        assert score_pending(conn) == 3
+
+        future = date(2026, 6, 6)
+        insert_forecasts(conn, [
+            ForecastDay("open_meteo", date(2026, 6, 5), future, temp_high_f=80.0),
+        ])
+        days = ensemble_forecast(conn, actuals_source="asos_mci",
+                                 now=datetime(2026, 6, 5, 12, tzinfo=timezone.utc))
+
+    day = {d["target_date"]: d for d in days}[future.isoformat()]
+    # bias=-1 → 80 - (-1) = 81
+    assert day["temp_high_f"] == 81.0
+    # within_var = residual variance > 0; between_var = 0 (single service)
+    # combined band must be > 0 — the old ±0 bug is gone
+    assert day["temp_high_f_sd"] is not None
+    assert day["temp_high_f_sd"] > 0.0
+
+
 def test_condition_match_null_when_actual_missing(tmp_path):
     db = tmp_path / "t.sqlite3"
     init_db(db)
