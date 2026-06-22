@@ -117,14 +117,23 @@ def _latest_forecasts(conn: sqlite3.Connection, today: date) -> list[sqlite3.Row
     ).fetchall()
 
 
-def _weighted(values: list[tuple[float, float]]) -> tuple[float, float] | None:
-    """Given [(value, weight)], return (weighted_mean, weighted_std)."""
-    wsum = sum(w for _, w in values)
+def _weighted(
+    values: list[tuple[float, float, float]],
+) -> tuple[float, float] | None:
+    """Given [(value, weight, residual_var)], return (weighted_mean, combined_sd).
+
+    combined_sd = sqrt(within + between) where:
+      within  = variance-weighted average of per-service residual variances
+                (conservative — no independence bonus for correlated services)
+      between = weighted variance of corrected service values around the mean
+    """
+    wsum = sum(w for _, w, _ in values)
     if wsum <= 0:
         return None
-    mean = sum(v * w for v, w in values) / wsum
-    var = sum(w * (v - mean) ** 2 for v, w in values) / wsum
-    return mean, sqrt(var)
+    mean = sum(v * w for v, w, _ in values) / wsum
+    between_var = sum(w * (v - mean) ** 2 for v, w, _ in values) / wsum
+    within_var = sum(w * rv for _, w, rv in values) / wsum
+    return mean, sqrt(within_var + between_var)
 
 
 def ensemble_forecast(
@@ -178,7 +187,7 @@ def ensemble_forecast(
                     value = max(value, 0.0)
                 # inverse-variance weight; unknown/zero variance -> weight 1.0
                 weight = 1.0 / variance if variance > 0 else 1.0
-                corrected.append((value, weight))
+                corrected.append((value, weight, variance))
             res = _weighted(corrected)
             if res is None:
                 day[fcol] = None

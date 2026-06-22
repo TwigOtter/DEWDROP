@@ -63,7 +63,7 @@
     <!-- Forecast Dashboard -->
     <section id="dashboard" class="view">
       <h2>Bias-corrected ensemble forecast</h2>
-      <p class="hint">Weighted by each service's inverse error variance per horizon. Bands are ±1σ across services.</p>
+      <p class="hint">Weighted by each service's inverse error variance per horizon. Bands are ±1σ combining each service's historical error scatter and cross-service disagreement.</p>
       <p id="ensemble-microclimate" class="hint"></p>
       <div class="controls seg" id="ensemble-toggles">
         <button data-metric="temp" class="active">Temperature</button>
